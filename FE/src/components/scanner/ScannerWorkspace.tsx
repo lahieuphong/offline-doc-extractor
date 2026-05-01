@@ -170,10 +170,11 @@ const styles = {
     left: 0,
     right: 0,
     top: "22%",
-    height: "3px",
-    background: "linear-gradient(90deg, transparent, #34d399, transparent)",
-    boxShadow: "0 0 14px rgba(52, 211, 153, 0.8)",
-    animation: "scannerLineSweep 2.8s ease-in-out infinite alternate",
+    height: "5px",
+    background: "linear-gradient(90deg, transparent, #10b981 18%, #34d399 50%, #10b981 82%, transparent)",
+    boxShadow: "0 0 20px rgba(16, 185, 129, 0.9)",
+    animation: "scannerLineSweep 2.2s ease-in-out infinite alternate",
+    willChange: "top",
   },
   categoryPill: {
     width: "100%",
@@ -212,12 +213,45 @@ const styles = {
     textAlign: "center" as const,
   },
   captureBtn: {
-    width: "76px",
-    height: "76px",
-    borderRadius: "999px",
-    border: "8px solid #dbe4f5",
-    background: "#ffffff",
+    border: 0,
+    background: "transparent",
     cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    position: "relative" as const,
+  },
+  captureOuter: {
+    width: "56px",
+    height: "56px",
+    borderRadius: "999px",
+    background: "rgba(255, 255, 255, 0.9)",
+    display: "grid",
+    placeItems: "center",
+  },
+  captureInner: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "999px",
+    background: "#ffffff",
+  },
+  pickerBtn: {
+    width: "48px",
+    height: "40px",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    borderRadius: "8px",
+    background: "rgba(255, 255, 255, 0.1)",
+    color: "#ffffff",
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+    transition: "background 0.2s ease",
+  },
+  pickerIcon: {
+    width: "20px",
+    height: "20px",
+  },
+  hiddenInput: {
+    display: "none",
   },
   scannerNextBtn: {
     border: 0,
@@ -230,35 +264,30 @@ const styles = {
     alignItems: "center",
     gap: "4px",
     transition: "all 0.2s ease",
+    position: "relative" as const,
   },
   scannerNextBtnActive: {
     background: "#10b981",
     color: "#ffffff",
     cursor: "pointer",
     boxShadow: "0 8px 20px rgba(16, 185, 129, 0.35)",
-    width: "96px",
-    height: "84px",
-    borderRadius: "12px",
-    justifyContent: "center",
-    position: "relative" as const,
-    gap: 0,
   },
   scannerNextBtnBadge: {
-    minWidth: "20px",
-    height: "20px",
+    width: "24px",
+    height: "24px",
     borderRadius: "999px",
-    background: "#ef4444",
+    background: "rgba(239, 68, 68, 0.8)",
     color: "#ffffff",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: "11px",
     fontWeight: 700,
-    lineHeight: 1,
-    padding: "0 6px",
+    lineHeight: "24px",
+    padding: 0,
     position: "absolute" as const,
-    top: "-8px",
-    right: "-8px",
+    top: "-6px",
+    right: "-6px",
     boxShadow: "0 6px 14px rgba(239, 68, 68, 0.35)",
   },
   scannerNextIcon: {
@@ -275,17 +304,25 @@ const styles = {
   },
 } as const;
 
+type ScannerTransferItem = {
+  name: string;
+  type: string;
+  dataUrl: string;
+};
+
 export default function ScannerWorkspace() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraLoading, setCameraLoading] = useState(false);
-  const [capturedImageDataUrl, setCapturedImageDataUrl] = useState<string | null>(null);
-  const [captureCount, setCaptureCount] = useState(0);
+  const [transferItems, setTransferItems] = useState<ScannerTransferItem[]>([]);
   const [flashVisible, setFlashVisible] = useState(false);
+
+  const totalReadyItems = transferItems.length;
 
   async function openCamera() {
     setCameraLoading(true);
@@ -360,10 +397,42 @@ export default function ScannerWorkspace() {
   }, []);
 
   function enterReviewDoc() {
-    if (!capturedImageDataUrl) return;
+    if (totalReadyItems <= 0) return;
     sessionStorage.setItem("scanner_entry_ok", "1");
-    sessionStorage.setItem("scanner_captured_image_data_url", capturedImageDataUrl);
+    sessionStorage.setItem("scanner_transfer_items", JSON.stringify(transferItems));
+    const firstImage = transferItems.find((item) => item.type.startsWith("image/"));
+    if (firstImage) {
+      // Giữ key cũ để tương thích ngược với luồng trước đó.
+      sessionStorage.setItem("scanner_captured_image_data_url", firstImage.dataUrl);
+    }
     router.push("/review-doc");
+  }
+
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error(`Không thể đọc file ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handlePickFiles(files: FileList | null) {
+    if (!files?.length) return;
+    const incoming = Array.from(files);
+
+    try {
+      const nextItems = await Promise.all(
+        incoming.map(async (file) => ({
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          dataUrl: await readFileAsDataUrl(file),
+        })),
+      );
+      setTransferItems((prev) => [...prev, ...nextItems]);
+    } catch {
+      setCameraError("Không thể thêm file lúc này. Vui lòng thử lại.");
+    }
   }
 
   function captureImage() {
@@ -413,8 +482,14 @@ export default function ScannerWorkspace() {
     canvas.height = Math.max(1, Math.round(sHeight));
     context.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    setCapturedImageDataUrl(dataUrl);
-    setCaptureCount((prev) => prev + 1);
+    setTransferItems((prev) => [
+      ...prev,
+      {
+        name: `scanner_capture_${Date.now()}.jpg`,
+        type: "image/jpeg",
+        dataUrl,
+      },
+    ]);
     setFlashVisible(true);
     window.setTimeout(() => setFlashVisible(false), 230);
   }
@@ -501,17 +576,56 @@ export default function ScannerWorkspace() {
         onLeftClick={() => history.back()}
         rightLabel="Bắt đầu quét"
         rightIcon={<span aria-hidden="true">→</span>}
-        rightDisabled={!capturedImageDataUrl}
+        rightDisabled={totalReadyItems <= 0}
         onRightClick={enterReviewDoc}
         fixedBottom
         centerContent={null}
         showLeft={false}
-        rightCompanion={<button type="button" aria-label="Nút chụp" style={styles.captureBtn} onClick={captureImage} />}
+        rightCompanion={
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "26px", marginRight: "12px" }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+              style={styles.hiddenInput}
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                const files = input.files;
+                await handlePickFiles(files);
+                input.value = "";
+              }}
+            />
+            <button
+              type="button"
+              style={styles.pickerBtn}
+              onClick={() => fileInputRef.current?.click()}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.pickerIcon} aria-hidden="true">
+                <path d="M18 22H4a2 2 0 0 1-2-2V6" />
+                <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18" />
+                <circle cx="12" cy="8" r="2" />
+                <rect width="16" height="16" x="6" y="2" rx="2" />
+              </svg>
+            </button>
+            <button type="button" aria-label="Nút chụp" style={styles.captureBtn} onClick={captureImage}>
+              <span style={styles.captureOuter}>
+                <span style={styles.captureInner} />
+              </span>
+            </button>
+          </div>
+        }
         rightCustomButton={
           <button
             type="button"
-            disabled={!capturedImageDataUrl}
-            style={{ ...styles.scannerNextBtn, ...(capturedImageDataUrl ? styles.scannerNextBtnActive : null) }}
+            disabled={totalReadyItems <= 0}
+            style={{ ...styles.scannerNextBtn, ...(totalReadyItems > 0 ? styles.scannerNextBtnActive : null) }}
             title="Tiếp tục"
             onClick={enterReviewDoc}
           >
@@ -519,7 +633,7 @@ export default function ScannerWorkspace() {
               <path d="M5 12h14" />
               <path d="m12 5 7 7-7 7" />
             </svg>
-            {captureCount > 0 ? <span style={styles.scannerNextBtnBadge}>{captureCount}</span> : null}
+            {totalReadyItems > 0 ? <span style={styles.scannerNextBtnBadge}>{totalReadyItems}</span> : null}
           </button>
         }
       />

@@ -287,6 +287,52 @@ export default function ReviewWorkspace() {
   }
 
   useEffect(() => {
+    const rawTransferItems = sessionStorage.getItem("scanner_transfer_items");
+    if (rawTransferItems) {
+      try {
+        const parsed = JSON.parse(rawTransferItems) as Array<{ name?: string; type?: string; dataUrl?: string }>;
+        const filesFromScanner: File[] = [];
+
+        parsed.forEach((item, index) => {
+          if (!item?.dataUrl) return;
+          const [header, base64Data] = item.dataUrl.split(",", 2);
+          if (!header || !base64Data) return;
+
+          const mimeMatch = header.match(/^data:(.*?);base64$/);
+          const mimeType = item.type || mimeMatch?.[1] || "application/octet-stream";
+
+          const binary = atob(base64Data);
+          const bytes = new Uint8Array(binary.length);
+          for (let offset = 0; offset < binary.length; offset += 1) {
+            bytes[offset] = binary.charCodeAt(offset);
+          }
+
+          const fallbackExt = mimeType.includes("png")
+            ? "png"
+            : mimeType.includes("jpeg") || mimeType.includes("jpg")
+              ? "jpg"
+              : mimeType.includes("pdf")
+                ? "pdf"
+                : mimeType.includes("wordprocessingml")
+                  ? "docx"
+                  : mimeType.includes("text")
+                    ? "txt"
+                    : "bin";
+
+          const name = item.name?.trim() ? item.name : `scanner_item_${Date.now()}_${index}.${fallbackExt}`;
+          filesFromScanner.push(new File([bytes], name, { type: mimeType }));
+        });
+
+        if (filesFromScanner.length > 0) {
+          addFiles(filesFromScanner);
+        }
+      } finally {
+        sessionStorage.removeItem("scanner_transfer_items");
+        sessionStorage.removeItem("scanner_captured_image_data_url");
+      }
+      return;
+    }
+
     const capturedDataUrl = sessionStorage.getItem("scanner_captured_image_data_url");
     if (!capturedDataUrl) return;
 
