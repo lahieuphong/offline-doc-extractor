@@ -413,7 +413,7 @@ export default function ResultsPage() {
   useEffect(() => {
     const elements = document.querySelectorAll("textarea[data-auto-grow='true']");
     elements.forEach((element) => autoResizeTextArea(element as HTMLTextAreaElement));
-  }, [editedResults]);
+  }, [editedResults.length, JSON.stringify(showFullSignatureByFile), safePage]);
 
   async function handleExportExcel() {
     if (!payload?.results || payload.results.length === 0) {

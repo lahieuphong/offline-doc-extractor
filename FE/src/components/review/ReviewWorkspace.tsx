@@ -24,6 +24,19 @@ function buildFileId(file: File): string {
   return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
+function buildUniqueFileId(file: File, existingIds: Set<string>): string {
+  const baseId = buildFileId(file);
+  if (!existingIds.has(baseId)) return baseId;
+
+  let suffix = 2;
+  let candidate = `${baseId}-${suffix}`;
+  while (existingIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${baseId}-${suffix}`;
+  }
+  return candidate;
+}
+
 function supportsPreview(file: File): boolean {
   const fileName = file.name.toLowerCase();
   return (
@@ -34,6 +47,14 @@ function supportsPreview(file: File): boolean {
     fileName.endsWith(".jpg") ||
     fileName.endsWith(".jpeg")
   );
+}
+
+function formatElapsedVi(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+  return `${hours} giờ ${String(minutes).padStart(2, "0")} phút ${String(seconds).padStart(2, "0")} giây`;
 }
 
 type PdfReadMode = "first_page" | "first_and_last_page" | "full_pdf";
@@ -50,6 +71,9 @@ type ProgressState = {
   currentFileName: string;
   currentFilePercent: number;
   completedFiles: number;
+  currentChunkIndex: number;
+  totalChunks: number;
+  currentChunkSize: number;
 };
 
 const styles = {
@@ -176,6 +200,7 @@ const styles = {
     color: "#0f172a",
     fontWeight: 700,
     fontSize: "28px",
+    textAlign: "center" as const,
   },
   progressMeta: {
     marginTop: "8px",
@@ -208,8 +233,11 @@ const initialProgress: ProgressState = {
   currentFileName: "",
   currentFilePercent: 0,
   completedFiles: 0,
+  currentChunkIndex: 0,
+  totalChunks: 0,
+  currentChunkSize: 0,
 };
-const EXTRACT_CHUNK_SIZE = 20;
+const EXTRACT_CHUNK_SIZE = 10;
 
 export default function ReviewWorkspace() {
   const router = useRouter();
@@ -249,16 +277,16 @@ export default function ReviewWorkspace() {
 
   const currentFileElapsedText = useMemo(() => {
     const startedAt = currentFileStartedAtRef.current;
-    if (!startedAt) return "0s";
+    if (!startedAt) return "0 giờ 00 phút 00 giây";
     const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-    return `${elapsedSec}s`;
+    return formatElapsedVi(elapsedSec);
   }, [progress.currentFilePercent, progress.currentFileIndex, timeTick]);
 
   const totalElapsedText = useMemo(() => {
     const startedAt = extractionStartedAtRef.current;
-    if (!startedAt) return "0s";
+    if (!startedAt) return "0 giờ 00 phút 00 giây";
     const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-    return `${elapsedSec}s`;
+    return formatElapsedVi(elapsedSec);
   }, [totalPercent, progress.currentFilePercent, progress.currentFileIndex, timeTick]);
 
   function addFiles(nextFiles: FileList | File[]) {
@@ -270,8 +298,8 @@ export default function ReviewWorkspace() {
       const addedIds: string[] = [];
 
       incoming.forEach((file) => {
-        const id = buildFileId(file);
-        if (existingIds.has(id)) return;
+        const id = buildUniqueFileId(file, existingIds);
+        existingIds.add(id);
         addedIds.push(id);
 
         merged.push({
@@ -487,6 +515,9 @@ export default function ReviewWorkspace() {
       currentFileName: selectedFiles[0]?.file.name ?? "",
       currentFilePercent: 0,
       completedFiles: 0,
+      currentChunkIndex: 1,
+      totalChunks: Math.max(1, Math.ceil(selectedFiles.length / EXTRACT_CHUNK_SIZE)),
+      currentChunkSize: Math.min(EXTRACT_CHUNK_SIZE, selectedFiles.length),
     });
 
     const aggregatedResults: Record<string, unknown>[] = [];
@@ -507,6 +538,8 @@ export default function ReviewWorkspace() {
           currentFileName: chunkLabel,
           currentFilePercent: 1,
           completedFiles: index,
+          currentChunkIndex: Math.floor(index / EXTRACT_CHUNK_SIZE) + 1,
+          currentChunkSize: chunk.length,
         }));
 
         const progressTimer = window.setInterval(() => {
@@ -546,6 +579,11 @@ export default function ReviewWorkspace() {
 
           const payload = (await response.json()) as ExtractJsonResponse;
           const chunkResults = payload.results ?? [];
+          if (chunkResults.length !== chunk.length) {
+            throw new Error(
+              `Backend trả về ${chunkResults.length}/${chunk.length} kết quả trong cùng nhóm file. Vui lòng thử lại.`,
+            );
+          }
           aggregatedResults.push(...chunkResults);
 
           setProgress((prev) => ({
@@ -616,7 +654,8 @@ export default function ReviewWorkspace() {
           <section style={styles.progressModal}>
           <p style={styles.progressTitle}>Tiến trình bóc tách</p>
           <p style={styles.progressMeta}>
-            File {progress.currentFileIndex + 1}/{progress.totalFiles}: {progress.currentFileName}
+            Nhóm {progress.currentChunkIndex}/{progress.totalChunks} ({progress.currentChunkSize} file):{" "}
+            {progress.currentFileName}
           </p>
           <div style={styles.progressTrack}>
             <div style={{ ...styles.progressFill, width: `${progress.currentFilePercent}%` }} />

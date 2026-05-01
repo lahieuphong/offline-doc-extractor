@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Literal, Optional, Tuple
 
@@ -8,6 +9,7 @@ from docx import Document
 
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
+OCR_TIMEOUT_SEC = int(os.getenv("OCR_TIMEOUT_SEC", "45"))
 
 
 def ocr_pdf_page(page, page_index: int) -> str:
@@ -22,11 +24,15 @@ def ocr_pdf_page(page, page_index: int) -> str:
         pix.samples,
     )
 
-    text = pytesseract.image_to_string(
-        image,
-        lang="vie+eng",
-        config="--psm 6",
-    )
+    try:
+        text = pytesseract.image_to_string(
+            image,
+            lang="vie+eng",
+            config="--psm 6",
+            timeout=OCR_TIMEOUT_SEC,
+        )
+    except RuntimeError:
+        text = "[OCR_TIMEOUT]"
 
     return f"\n--- PAGE {page_index} OCR ---\n{text.strip()}"
 
@@ -108,11 +114,15 @@ def extract_text_from_txt(file_path: Path) -> Tuple[str, Optional[int]]:
 def extract_text_from_image(file_path: Path) -> Tuple[str, Optional[int]]:
     with Image.open(file_path) as image:
         normalized = image.convert("RGB")
-        text = pytesseract.image_to_string(
-            normalized,
-            lang="vie+eng",
-            config="--psm 6",
-        )
+        try:
+            text = pytesseract.image_to_string(
+                normalized,
+                lang="vie+eng",
+                config="--psm 6",
+                timeout=OCR_TIMEOUT_SEC,
+            )
+        except RuntimeError:
+            text = "[OCR_TIMEOUT]"
 
     return text.strip(), 1
 

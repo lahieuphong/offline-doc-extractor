@@ -1,6 +1,7 @@
 import shutil
 import uuid
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,7 +20,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STORAGE_DIR = BASE_DIR / "storage"
 UPLOADS_DIR = STORAGE_DIR / "uploads"
 EXPORTS_DIR = STORAGE_DIR / "exports"
-MAX_WORKERS = max(1, int(os.getenv("EXTRACT_MAX_WORKERS", "3")))
+MAX_WORKERS = max(1, int(os.getenv("EXTRACT_MAX_WORKERS", "1")))
+FILE_PROCESS_RETRIES = max(0, int(os.getenv("FILE_PROCESS_RETRIES", "1")))
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 METADATA_22_KEYS = [
@@ -222,6 +224,8 @@ def process_stored_file(
     pdf_read_mode: str = "first_page",
 ) -> Dict[str, Any]:
     try:
+        print(f"[extract:start] file={original_filename} path={stored_path.name} mode={pdf_read_mode}", flush=True)
+        started_at = time.time()
         document_text, page_count = extract_text(stored_path, pdf_read_mode=pdf_read_mode)
 
         if not document_text.strip():
@@ -239,7 +243,7 @@ def process_stored_file(
             data = extract_by_rules(document_text, page_count=page_count)
             extraction_method = "rule_based"
 
-        return normalize_result(
+        result = normalize_result(
             source_filename=original_filename,
             extraction_method=extraction_method,
             page_count=page_count,
@@ -247,8 +251,12 @@ def process_stored_file(
             batch_id=batch_id,
             extension=stored_path.suffix.lower(),
         )
+        elapsed = round(time.time() - started_at, 2)
+        print(f"[extract:done] file={original_filename} elapsed={elapsed}s mode={result.get('mode')}", flush=True)
+        return result
 
     except Exception as error:
+        print(f"[extract:error] file={original_filename} err={error}", flush=True)
         return normalize_result(
             source_filename=original_filename,
             extraction_method="failed",
@@ -282,6 +290,41 @@ def process_stored_file(
         )
 
 
+def process_stored_file_with_retry(
+    stored_path: Path,
+    original_filename: str,
+    batch_id: str,
+    use_llm: bool,
+    pdf_read_mode: str = "first_page",
+) -> Dict[str, Any]:
+    last_result: Optional[Dict[str, Any]] = None
+    for attempt in range(FILE_PROCESS_RETRIES + 1):
+        result = process_stored_file(
+            stored_path=stored_path,
+            original_filename=original_filename,
+            batch_id=batch_id,
+            use_llm=use_llm,
+            pdf_read_mode=pdf_read_mode,
+        )
+        last_result = result
+        if result.get("mode") != "failed":
+            return result
+        if attempt < FILE_PROCESS_RETRIES:
+            print(
+                f"[extract:retry] file={original_filename} attempt={attempt + 1}/{FILE_PROCESS_RETRIES}",
+                flush=True,
+            )
+    return last_result or normalize_result(
+        source_filename=original_filename,
+        extraction_method="failed",
+        page_count=None,
+        data={},
+        batch_id=batch_id,
+        extension=stored_path.suffix.lower(),
+        error_message="unknown_error",
+    )
+
+
 def process_files_parallel(
     file_entries: List[Dict[str, Any]],
     batch_id: str,
@@ -297,7 +340,7 @@ def process_files_parallel(
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         future_to_index = {
             executor.submit(
-                process_stored_file,
+                process_stored_file_with_retry,
                 stored_path=entry["stored_path"],
                 original_filename=entry["original_filename"],
                 batch_id=batch_id,
