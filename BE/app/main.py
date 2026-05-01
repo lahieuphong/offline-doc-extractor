@@ -1,7 +1,9 @@
 import shutil
 import uuid
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STORAGE_DIR = BASE_DIR / "storage"
 UPLOADS_DIR = STORAGE_DIR / "uploads"
 EXPORTS_DIR = STORAGE_DIR / "exports"
+MAX_WORKERS = max(1, int(os.getenv("EXTRACT_MAX_WORKERS", "3")))
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 METADATA_22_KEYS = [
@@ -170,7 +173,55 @@ def process_one_file(
 
     try:
         stored_path = save_upload_file(upload_file, batch_id)
+        return process_stored_file(
+            stored_path=stored_path,
+            original_filename=original_filename,
+            batch_id=batch_id,
+            use_llm=use_llm,
+            pdf_read_mode=pdf_read_mode,
+        )
+    except Exception as error:
+        return normalize_result(
+            source_filename=original_filename,
+            extraction_method="failed",
+            page_count=None,
+            data={
+                "document_type": None,
+                "document_number": None,
+                "document_code": None,
+                "issuing_authority": None,
+                "national_title": None,
+                "place_of_issue": None,
+                "issued_date": None,
+                "title": None,
+                "summary": None,
+                "legal_bases": [],
+                "main_content": None,
+                "articles": [],
+                "effective_date": None,
+                "recipients": [],
+                "signer_name": None,
+                "signer_title": None,
+                "signature_block": None,
+                "page_count": None,
+                "confidence": 0,
+                "missing_fields": [],
+                "notes": "",
+            },
+            batch_id=batch_id,
+            extension=Path(original_filename).suffix.lower(),
+            error_message=str(error),
+        )
 
+
+def process_stored_file(
+    stored_path: Path,
+    original_filename: str,
+    batch_id: str,
+    use_llm: bool,
+    pdf_read_mode: str = "first_page",
+) -> Dict[str, Any]:
+    try:
         document_text, page_count = extract_text(stored_path, pdf_read_mode=pdf_read_mode)
 
         if not document_text.strip():
@@ -231,6 +282,52 @@ def process_one_file(
         )
 
 
+def process_files_parallel(
+    file_entries: List[Dict[str, Any]],
+    batch_id: str,
+    use_llm: bool,
+    pdf_read_mode: str,
+) -> List[Dict[str, Any]]:
+    if not file_entries:
+        return []
+
+    results_by_index: Dict[int, Dict[str, Any]] = {}
+    worker_count = min(MAX_WORKERS, len(file_entries))
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        future_to_index = {
+            executor.submit(
+                process_stored_file,
+                stored_path=entry["stored_path"],
+                original_filename=entry["original_filename"],
+                batch_id=batch_id,
+                use_llm=use_llm,
+                pdf_read_mode=pdf_read_mode,
+            ): entry["index"]
+            for entry in file_entries
+        }
+
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            try:
+                results_by_index[index] = future.result()
+            except Exception as error:
+                entry = file_entries[index]
+                original_filename = str(entry["original_filename"])
+                extension = Path(original_filename).suffix.lower()
+                results_by_index[index] = normalize_result(
+                    source_filename=original_filename,
+                    extraction_method="failed",
+                    page_count=None,
+                    data={},
+                    batch_id=batch_id,
+                    extension=extension,
+                    error_message=str(error),
+                )
+
+    return [results_by_index[idx] for idx in range(len(file_entries))]
+
+
 @app.post("/api/extract-excel")
 async def extract_excel(
     files: List[UploadFile] = File(...),
@@ -241,16 +338,25 @@ async def extract_excel(
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
     batch_id = str(uuid.uuid4())
-    results = []
+    file_entries: List[Dict[str, Any]] = []
 
-    for file in files:
-        result = process_one_file(
-            upload_file=file,
-            batch_id=batch_id,
-            use_llm=use_llm,
-            pdf_read_mode=pdf_read_mode,
+    for index, file in enumerate(files):
+        original_filename = file.filename or "uploaded_file"
+        stored_path = save_upload_file(file, batch_id)
+        file_entries.append(
+            {
+                "index": index,
+                "original_filename": original_filename,
+                "stored_path": stored_path,
+            }
         )
-        results.append(result)
+
+    results = process_files_parallel(
+        file_entries=file_entries,
+        batch_id=batch_id,
+        use_llm=use_llm,
+        pdf_read_mode=pdf_read_mode,
+    )
 
     output_path = EXPORTS_DIR / f"extraction_result_{batch_id}.xlsx"
 
@@ -276,16 +382,25 @@ async def extract_json(
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
     batch_id = str(uuid.uuid4())
-    results = []
+    file_entries: List[Dict[str, Any]] = []
 
-    for file in files:
-        result = process_one_file(
-            upload_file=file,
-            batch_id=batch_id,
-            use_llm=use_llm,
-            pdf_read_mode=pdf_read_mode,
+    for index, file in enumerate(files):
+        original_filename = file.filename or "uploaded_file"
+        stored_path = save_upload_file(file, batch_id)
+        file_entries.append(
+            {
+                "index": index,
+                "original_filename": original_filename,
+                "stored_path": stored_path,
+            }
         )
-        results.append(result)
+
+    results = process_files_parallel(
+        file_entries=file_entries,
+        batch_id=batch_id,
+        use_llm=use_llm,
+        pdf_read_mode=pdf_read_mode,
+    )
 
     return {
         "batch_id": batch_id,

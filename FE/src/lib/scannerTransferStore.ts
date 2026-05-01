@@ -5,7 +5,7 @@ export type ScannerTransferItemPayload = {
 };
 
 const DB_NAME = "offline_doc_extractor";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "scanner_transfer_items";
 const FILE_STORE_NAME = "scanner_transfer_files";
 const RESULT_STORE_NAME = "review_result_payloads";
