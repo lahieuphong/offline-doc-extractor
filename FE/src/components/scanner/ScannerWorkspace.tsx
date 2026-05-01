@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SharedBottomBar from "@/components/common/SharedBottomBar";
+import {
+  buildScannerTransferIdbMarker,
+  saveScannerFilesBatchToIdb,
+} from "@/lib/scannerTransferStore";
 
 const HEADER_HEIGHT = 49;
 
@@ -315,12 +319,6 @@ const styles = {
   },
 } as const;
 
-type ScannerTransferItem = {
-  name: string;
-  type: string;
-  dataUrl: string;
-};
-
 export default function ScannerWorkspace() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -331,10 +329,10 @@ export default function ScannerWorkspace() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraLoading, setCameraLoading] = useState(false);
-  const [transferItems, setTransferItems] = useState<ScannerTransferItem[]>([]);
+  const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
   const [flashVisible, setFlashVisible] = useState(false);
 
-  const totalReadyItems = transferItems.length;
+  const totalReadyItems = queuedFiles.length;
 
   async function openCamera() {
     setCameraLoading(true);
@@ -425,46 +423,22 @@ export default function ScannerWorkspace() {
     return () => animation.cancel();
   }, []);
 
-  function enterReviewDoc() {
+  async function enterReviewDoc() {
     if (totalReadyItems <= 0) return;
     sessionStorage.setItem("scanner_entry_ok", "1");
-    sessionStorage.setItem("scanner_transfer_items", JSON.stringify(transferItems));
-    const firstImage = transferItems.find((item) => item.type.startsWith("image/"));
-    if (firstImage) {
-      // Giữ key cũ để tương thích ngược với luồng trước đó.
-      sessionStorage.setItem("scanner_captured_image_data_url", firstImage.dataUrl);
-    }
+    const batchId = await saveScannerFilesBatchToIdb(queuedFiles);
+    sessionStorage.setItem("scanner_transfer_items", buildScannerTransferIdbMarker(batchId));
+    sessionStorage.removeItem("scanner_captured_image_data_url");
     router.push("/review-doc");
-  }
-
-  function readFileAsDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error(`Không thể đọc file ${file.name}`));
-      reader.readAsDataURL(file);
-    });
   }
 
   async function handlePickFiles(files: FileList | null) {
     if (!files?.length) return;
     const incoming = Array.from(files);
-
-    try {
-      const nextItems = await Promise.all(
-        incoming.map(async (file) => ({
-          name: file.name,
-          type: file.type || "application/octet-stream",
-          dataUrl: await readFileAsDataUrl(file),
-        })),
-      );
-      setTransferItems((prev) => [...prev, ...nextItems]);
-    } catch {
-      setCameraError("Không thể thêm file lúc này. Vui lòng thử lại.");
-    }
+    setQueuedFiles((prev) => [...prev, ...incoming]);
   }
 
-  function captureImage() {
+  async function captureImage() {
     if (!cameraReady || !videoRef.current) return;
 
     const video = videoRef.current;
@@ -510,15 +484,15 @@ export default function ScannerWorkspace() {
     canvas.width = Math.max(1, Math.round(sWidth));
     canvas.height = Math.max(1, Math.round(sHeight));
     context.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    setTransferItems((prev) => [
-      ...prev,
-      {
-        name: `scanner_capture_${Date.now()}.jpg`,
-        type: "image/jpeg",
-        dataUrl,
-      },
-    ]);
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), "image/jpeg", 0.92);
+    });
+    if (!blob) {
+      setCameraError("Không thể chụp ảnh lúc này. Vui lòng thử lại.");
+      return;
+    }
+    const file = new File([blob], `scanner_capture_${Date.now()}.jpg`, { type: "image/jpeg" });
+    setQueuedFiles((prev) => [...prev, file]);
     setFlashVisible(true);
     window.setTimeout(() => setFlashVisible(false), 230);
   }

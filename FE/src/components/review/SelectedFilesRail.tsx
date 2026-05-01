@@ -125,12 +125,15 @@ const styles = {
 
 export default function SelectedFilesRail({ files, selectedIds, onToggle }: SelectedFilesRailProps) {
   const COLLAPSED_MAX_HEIGHT = 252;
+  const RENDER_STEP = 300;
   const railRef = useRef<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [canExpand, setCanExpand] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(RENDER_STEP);
 
   useEffect(() => {
     setExpanded(false);
+    setVisibleCount(RENDER_STEP);
   }, [files.length]);
 
   useEffect(() => {
@@ -152,11 +155,13 @@ export default function SelectedFilesRail({ files, selectedIds, onToggle }: Sele
       counter += 1;
     }
   });
+  const visibleFiles = files.slice(0, visibleCount);
+  const hasMoreFilesToRender = visibleCount < files.length;
 
   return (
     <div style={styles.railWrap}>
       <section ref={railRef} style={{ ...styles.fileRail, maxHeight: expanded ? "none" : `${COLLAPSED_MAX_HEIGHT}px`, overflow: expanded ? "visible" : "hidden" }}>
-        {files.map((item) => {
+        {visibleFiles.map((item) => {
           const fileName = item.file.name.toLowerCase();
           const isDocx = fileName.endsWith(".docx") || fileName.endsWith(".doc");
           const isImage = fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
@@ -203,6 +208,26 @@ export default function SelectedFilesRail({ files, selectedIds, onToggle }: Sele
           );
         })}
       </section>
+      {hasMoreFilesToRender ? (
+        <div style={{ marginTop: "10px", display: "flex", justifyContent: "center" }}>
+          <button
+            type="button"
+            onClick={() => setVisibleCount((prev) => Math.min(files.length, prev + RENDER_STEP))}
+            style={{
+              border: "1px solid #d7deea",
+              borderRadius: "8px",
+              background: "#ffffff",
+              color: "#334155",
+              fontWeight: 700,
+              fontSize: "13px",
+              padding: "7px 12px",
+              cursor: "pointer",
+            }}
+          >
+            Tải thêm file ({files.length - visibleCount} còn lại)
+          </button>
+        </div>
+      ) : null}
 
       {!expanded && canExpand ? (
         <button type="button" style={styles.expandOverlay} onClick={() => setExpanded(true)} aria-label="Xem thêm file">

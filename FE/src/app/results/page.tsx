@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BACKEND_URL } from "@/lib/api";
+import {
+  loadReviewResultPayloadFromIdb,
+  parseReviewResultIdbMarker,
+  removeReviewResultPayloadFromIdb,
+} from "@/lib/scannerTransferStore";
 import SharedBottomBar from "@/components/common/SharedBottomBar";
 
 type ResultItem = Record<string, unknown>;
@@ -11,6 +16,7 @@ type ResultPayload = {
   batch_id?: string;
   results?: ResultItem[];
 };
+const RESULT_PAGE_SIZE = 25;
 
 const METADATA_FIELDS: Array<{ key: string; label: string }> = [
   { key: "docId", label: "Mã tài liệu" },
@@ -306,20 +312,33 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(false);
   const [showFullSignatureByFile, setShowFullSignatureByFile] = useState<Record<number, boolean>>({});
   const [summaryToast, setSummaryToast] = useState<string | null>(null);
+  const [resultPage, setResultPage] = useState(1);
 
   const results = useMemo(() => payload?.results ?? [], [payload]);
   const [editedResults, setEditedResults] = useState<Record<string, string>[]>([]);
+  const totalPages = Math.max(1, Math.ceil(results.length / RESULT_PAGE_SIZE));
+  const safePage = Math.min(resultPage, totalPages);
+  const pageStartIndex = (safePage - 1) * RESULT_PAGE_SIZE;
+  const pagedResults = results.slice(pageStartIndex, pageStartIndex + RESULT_PAGE_SIZE);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    let cancelled = false;
+
+    async function hydrateResultPayload() {
       const raw = sessionStorage.getItem("review_result_payload");
       let parsed: ResultPayload | null = null;
 
       if (raw) {
-        try {
-          parsed = JSON.parse(raw) as ResultPayload;
-        } catch {
-          parsed = null;
+        const idbResultId = parseReviewResultIdbMarker(raw);
+        if (idbResultId) {
+          parsed = await loadReviewResultPayloadFromIdb<ResultPayload>(idbResultId);
+          await removeReviewResultPayloadFromIdb(idbResultId);
+        } else {
+          try {
+            parsed = JSON.parse(raw) as ResultPayload;
+          } catch {
+            parsed = null;
+          }
         }
       }
 
@@ -331,9 +350,11 @@ export default function ResultsPage() {
         return editableRow;
       });
 
-      setPayload(parsed);
-      setEditedResults(nextEdited);
-      setHasLoadedPayload(true);
+      if (!cancelled) {
+        setPayload(parsed);
+        setEditedResults(nextEdited);
+        setHasLoadedPayload(true);
+      }
 
       const rawSummary = sessionStorage.getItem("review_extraction_summary");
       if (rawSummary) {
@@ -341,16 +362,23 @@ export default function ResultsPage() {
           const summary = JSON.parse(rawSummary) as { total_elapsed_ms?: number; total_files?: number };
           const totalSec = Math.max(0, Math.ceil((summary.total_elapsed_ms ?? 0) / 1000));
           const totalFiles = summary.total_files ?? 0;
-          setSummaryToast(`Đã bóc tách ${totalFiles} file. Tổng thời gian: ${totalSec}s.`);
+          if (!cancelled) {
+            setSummaryToast(`Đã bóc tách ${totalFiles} file. Tổng thời gian: ${totalSec}s.`);
+          }
         } catch {
-          setSummaryToast("Đã hoàn tất bóc tách.");
+          if (!cancelled) {
+            setSummaryToast("Đã hoàn tất bóc tách.");
+          }
         } finally {
           sessionStorage.removeItem("review_extraction_summary");
         }
       }
-    });
+    }
 
-    return () => window.cancelAnimationFrame(frame);
+    void hydrateResultPayload();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -462,8 +490,34 @@ export default function ResultsPage() {
         ) : results.length === 0 ? (
           <div style={styles.noData}>Chưa có dữ liệu kết quả.</div>
         ) : (
-          results.map((item, index) => (
-            <div key={`result-${index}`} style={{ marginBottom: index === results.length - 1 ? 0 : 16 }}>
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <div style={{ fontSize: "13px", color: "#475467", fontWeight: 600 }}>
+                Trang {safePage}/{totalPages} - hiển thị {pagedResults.length}/{results.length} file
+              </div>
+              <div style={{ display: "inline-flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  disabled={safePage <= 1}
+                  onClick={() => setResultPage((prev) => Math.max(1, prev - 1))}
+                  style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: safePage <= 1 ? "not-allowed" : "pointer" }}
+                >
+                  Trước
+                </button>
+                <button
+                  type="button"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setResultPage((prev) => Math.min(totalPages, prev + 1))}
+                  style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: safePage >= totalPages ? "not-allowed" : "pointer" }}
+                >
+                  Sau
+                </button>
+              </div>
+            </div>
+          {pagedResults.map((item, pageIndex) => {
+            const index = pageStartIndex + pageIndex;
+            return (
+            <div key={`result-${index}`} style={{ marginBottom: pageIndex === pagedResults.length - 1 ? 0 : 16 }}>
               <p style={styles.fileTitle}>
                 <span aria-hidden="true" style={{ ...styles.pathIcon, color: "#ffffff" }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 24, height: 24 }}>
@@ -548,7 +602,9 @@ export default function ResultsPage() {
                 </tbody>
               </table>
             </div>
-          ))
+            );
+          })}
+          </>
         )}
       </section>
 

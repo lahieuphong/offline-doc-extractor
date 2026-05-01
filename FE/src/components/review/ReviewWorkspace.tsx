@@ -3,6 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BACKEND_URL } from "@/lib/api";
+import {
+  buildReviewResultIdbMarker,
+  loadScannerFilesBatchFromIdb,
+  loadScannerTransferItemsFromIdb,
+  parseScannerTransferIdbMarker,
+  saveReviewResultPayloadToIdb,
+  removeScannerFilesBatchFromIdb,
+  removeScannerTransferItemsFromIdb,
+  shouldFallbackToIdb,
+} from "@/lib/scannerTransferStore";
 import type { SelectedFile } from "@/types/review";
 import SharedBottomBar from "@/components/common/SharedBottomBar";
 import SharedTopBar from "@/components/common/SharedTopBar";
@@ -199,6 +209,7 @@ const initialProgress: ProgressState = {
   currentFilePercent: 0,
   completedFiles: 0,
 };
+const EXTRACT_CHUNK_SIZE = 20;
 
 export default function ReviewWorkspace() {
   const router = useRouter();
@@ -287,74 +298,128 @@ export default function ReviewWorkspace() {
   }
 
   useEffect(() => {
-    const rawTransferItems = sessionStorage.getItem("scanner_transfer_items");
-    if (rawTransferItems) {
-      try {
-        const parsed = JSON.parse(rawTransferItems) as Array<{ name?: string; type?: string; dataUrl?: string }>;
-        const filesFromScanner: File[] = [];
+    let cancelled = false;
 
-        parsed.forEach((item, index) => {
-          if (!item?.dataUrl) return;
-          const [header, base64Data] = item.dataUrl.split(",", 2);
-          if (!header || !base64Data) return;
-
-          const mimeMatch = header.match(/^data:(.*?);base64$/);
-          const mimeType = item.type || mimeMatch?.[1] || "application/octet-stream";
-
-          const binary = atob(base64Data);
-          const bytes = new Uint8Array(binary.length);
-          for (let offset = 0; offset < binary.length; offset += 1) {
-            bytes[offset] = binary.charCodeAt(offset);
+    async function hydrateFilesFromScanner() {
+      const rawTransferItems = sessionStorage.getItem("scanner_transfer_items");
+      if (rawTransferItems) {
+        try {
+          const idbRecordId = parseScannerTransferIdbMarker(rawTransferItems);
+          if (idbRecordId) {
+            const filesBatch = await loadScannerFilesBatchFromIdb(idbRecordId);
+            if (!cancelled && filesBatch && filesBatch.length > 0) {
+              addFiles(filesBatch);
+            } else {
+              // Giữ tương thích nếu data cũ vẫn lưu theo base64 payload.
+              const parsedLegacy = await loadScannerTransferItemsFromIdb(idbRecordId);
+              const filesFromLegacy: File[] = [];
+              parsedLegacy?.forEach((item, index) => {
+                if (!item?.dataUrl) return;
+                const [header, base64Data] = item.dataUrl.split(",", 2);
+                if (!header || !base64Data) return;
+                const mimeMatch = header.match(/^data:(.*?);base64$/);
+                const mimeType = item.type || mimeMatch?.[1] || "application/octet-stream";
+                const binary = atob(base64Data);
+                const bytes = new Uint8Array(binary.length);
+                for (let offset = 0; offset < binary.length; offset += 1) {
+                  bytes[offset] = binary.charCodeAt(offset);
+                }
+                const fallbackExt = mimeType.includes("png")
+                  ? "png"
+                  : mimeType.includes("jpeg") || mimeType.includes("jpg")
+                    ? "jpg"
+                    : mimeType.includes("pdf")
+                      ? "pdf"
+                      : mimeType.includes("wordprocessingml")
+                        ? "docx"
+                        : mimeType.includes("text")
+                          ? "txt"
+                          : "bin";
+                const name = item.name?.trim() ? item.name : `scanner_item_${Date.now()}_${index}.${fallbackExt}`;
+                filesFromLegacy.push(new File([bytes], name, { type: mimeType }));
+              });
+              if (!cancelled && filesFromLegacy.length > 0) {
+                addFiles(filesFromLegacy);
+              }
+            }
+            await removeScannerFilesBatchFromIdb(idbRecordId);
+            await removeScannerTransferItemsFromIdb(idbRecordId);
+            return;
           }
 
-          const fallbackExt = mimeType.includes("png")
-            ? "png"
-            : mimeType.includes("jpeg") || mimeType.includes("jpg")
-              ? "jpg"
-              : mimeType.includes("pdf")
-                ? "pdf"
-                : mimeType.includes("wordprocessingml")
-                  ? "docx"
-                  : mimeType.includes("text")
-                    ? "txt"
-                    : "bin";
+          const parsed = JSON.parse(rawTransferItems) as Array<{ name?: string; type?: string; dataUrl?: string }>;
+          const filesFromScanner: File[] = [];
 
-          const name = item.name?.trim() ? item.name : `scanner_item_${Date.now()}_${index}.${fallbackExt}`;
-          filesFromScanner.push(new File([bytes], name, { type: mimeType }));
-        });
+          parsed?.forEach((item, index) => {
+            if (!item?.dataUrl) return;
+            const [header, base64Data] = item.dataUrl.split(",", 2);
+            if (!header || !base64Data) return;
 
-        if (filesFromScanner.length > 0) {
-          addFiles(filesFromScanner);
+            const mimeMatch = header.match(/^data:(.*?);base64$/);
+            const mimeType = item.type || mimeMatch?.[1] || "application/octet-stream";
+
+            const binary = atob(base64Data);
+            const bytes = new Uint8Array(binary.length);
+            for (let offset = 0; offset < binary.length; offset += 1) {
+              bytes[offset] = binary.charCodeAt(offset);
+            }
+
+            const fallbackExt = mimeType.includes("png")
+              ? "png"
+              : mimeType.includes("jpeg") || mimeType.includes("jpg")
+                ? "jpg"
+                : mimeType.includes("pdf")
+                  ? "pdf"
+                  : mimeType.includes("wordprocessingml")
+                    ? "docx"
+                    : mimeType.includes("text")
+                      ? "txt"
+                      : "bin";
+
+            const name = item.name?.trim() ? item.name : `scanner_item_${Date.now()}_${index}.${fallbackExt}`;
+            filesFromScanner.push(new File([bytes], name, { type: mimeType }));
+          });
+
+          if (!cancelled && filesFromScanner.length > 0) {
+            addFiles(filesFromScanner);
+          }
+        } finally {
+          sessionStorage.removeItem("scanner_transfer_items");
+          sessionStorage.removeItem("scanner_captured_image_data_url");
+        }
+        return;
+      }
+
+      const capturedDataUrl = sessionStorage.getItem("scanner_captured_image_data_url");
+      if (!capturedDataUrl) return;
+
+      try {
+        const [header, base64Data] = capturedDataUrl.split(",", 2);
+        if (!header || !base64Data) return;
+
+        const mimeMatch = header.match(/^data:(.*?);base64$/);
+        const mimeType = mimeMatch?.[1] || "image/jpeg";
+
+        const binary = atob(base64Data);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+
+        const ext = mimeType.includes("png") ? "png" : "jpg";
+        const capturedFile = new File([bytes], `scanner_capture_${Date.now()}.${ext}`, { type: mimeType });
+        if (!cancelled) {
+          addFiles([capturedFile]);
         }
       } finally {
-        sessionStorage.removeItem("scanner_transfer_items");
         sessionStorage.removeItem("scanner_captured_image_data_url");
       }
-      return;
     }
 
-    const capturedDataUrl = sessionStorage.getItem("scanner_captured_image_data_url");
-    if (!capturedDataUrl) return;
-
-    try {
-      const [header, base64Data] = capturedDataUrl.split(",", 2);
-      if (!header || !base64Data) return;
-
-      const mimeMatch = header.match(/^data:(.*?);base64$/);
-      const mimeType = mimeMatch?.[1] || "image/jpeg";
-
-      const binary = atob(base64Data);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index += 1) {
-        bytes[index] = binary.charCodeAt(index);
-      }
-
-      const ext = mimeType.includes("png") ? "png" : "jpg";
-      const capturedFile = new File([bytes], `scanner_capture_${Date.now()}.${ext}`, { type: mimeType });
-      addFiles([capturedFile]);
-    } finally {
-      sessionStorage.removeItem("scanner_captured_image_data_url");
-    }
+    void hydrateFilesFromScanner();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function clearFiles() {
@@ -428,14 +493,18 @@ export default function ReviewWorkspace() {
     const aggregateBatchId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`;
 
     try {
-      for (let index = 0; index < selectedFiles.length; index += 1) {
-        const selected = selectedFiles[index];
+      for (let index = 0; index < selectedFiles.length; index += EXTRACT_CHUNK_SIZE) {
+        const chunk = selectedFiles.slice(index, index + EXTRACT_CHUNK_SIZE);
+        const chunkLabel =
+          chunk.length === 1
+            ? chunk[0].file.name
+            : `${chunk[0].file.name} ... (+${Math.max(0, chunk.length - 1)} file)`;
         currentFileStartedAtRef.current = Date.now();
 
         setProgress((prev) => ({
           ...prev,
           currentFileIndex: index,
-          currentFileName: selected.file.name,
+          currentFileName: chunkLabel,
           currentFilePercent: 1,
           completedFiles: index,
         }));
@@ -459,7 +528,9 @@ export default function ReviewWorkspace() {
 
         try {
           const formData = new FormData();
-          formData.append("files", selected.file);
+          chunk.forEach((selected) => {
+            formData.append("files", selected.file);
+          });
           formData.append("use_llm", useLlm ? "true" : "false");
           formData.append("pdf_read_mode", pdfReadMode);
 
@@ -470,33 +541,34 @@ export default function ReviewWorkspace() {
 
           if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(errorText || `Xử lý thất bại ở file ${selected.file.name}.`);
+            throw new Error(errorText || `Xử lý thất bại tại nhóm file bắt đầu từ ${chunk[0].file.name}.`);
           }
 
           const payload = (await response.json()) as ExtractJsonResponse;
-          const oneFileResult = payload.results?.[0];
-
-          if (oneFileResult) {
-            aggregatedResults.push(oneFileResult);
-          }
+          const chunkResults = payload.results ?? [];
+          aggregatedResults.push(...chunkResults);
 
           setProgress((prev) => ({
             ...prev,
             currentFilePercent: 100,
-            completedFiles: index + 1,
+            completedFiles: Math.min(selectedFiles.length, index + chunk.length),
           }));
         } finally {
           window.clearInterval(progressTimer);
         }
       }
 
-      sessionStorage.setItem(
-        "review_result_payload",
-        JSON.stringify({
-          batch_id: aggregateBatchId,
-          results: aggregatedResults,
-        }),
-      );
+      const reviewResultPayload = {
+        batch_id: aggregateBatchId,
+        results: aggregatedResults,
+      };
+      try {
+        sessionStorage.setItem("review_result_payload", JSON.stringify(reviewResultPayload));
+      } catch (error) {
+        if (!shouldFallbackToIdb(error)) throw error;
+        const resultId = await saveReviewResultPayloadToIdb(reviewResultPayload);
+        sessionStorage.setItem("review_result_payload", buildReviewResultIdbMarker(resultId));
+      }
       const totalElapsedMs = extractionStartedAtRef.current ? Date.now() - extractionStartedAtRef.current : 0;
       sessionStorage.setItem(
         "review_extraction_summary",
