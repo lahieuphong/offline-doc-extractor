@@ -165,15 +165,26 @@ const styles = {
     padding: "4px",
     width: "min(92vw, 520px)",
   },
+  scanFrame: {
+    position: "absolute" as const,
+    top: "24%",
+    left: 0,
+    right: 0,
+    width: "100%",
+    height: "min(58vh, 620px)",
+    borderRadius: "18px",
+    overflow: "hidden" as const,
+    zIndex: 6,
+    pointerEvents: "none" as const,
+  },
   scanLine: {
     position: "absolute",
     left: 0,
     right: 0,
-    top: "22%",
+    top: "14%",
     height: "5px",
     background: "linear-gradient(90deg, transparent, #10b981 18%, #34d399 50%, #10b981 82%, transparent)",
     boxShadow: "0 0 20px rgba(16, 185, 129, 0.9)",
-    animation: "scannerLineSweep 2.2s ease-in-out infinite alternate",
     willChange: "top",
   },
   categoryPill: {
@@ -315,6 +326,7 @@ export default function ScannerWorkspace() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const scanLineRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -394,6 +406,23 @@ export default function ScannerWorkspace() {
         streamRef.current = null;
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const line = scanLineRef.current;
+    if (!line || typeof line.animate !== "function") return;
+
+    const animation = line.animate(
+      [{ top: "14%" }, { top: "82%" }],
+      {
+        duration: 1700,
+        easing: "ease-in-out",
+        iterations: Infinity,
+        direction: "alternate",
+      },
+    );
+
+    return () => animation.cancel();
   }, []);
 
   function enterReviewDoc() {
@@ -496,15 +525,7 @@ export default function ScannerWorkspace() {
 
   return (
     <div style={styles.page}>
-      <style jsx>{`
-        @keyframes scannerLineSweep {
-          0% {
-            top: 14%;
-          }
-          100% {
-            top: 82%;
-          }
-        }
+      <style jsx global>{`
         @keyframes captureFlash {
           0% {
             opacity: 0.9;
@@ -545,7 +566,9 @@ export default function ScannerWorkspace() {
               <div style={styles.cameraErrorPill}>Không có kết nối camera. Vui lòng kiểm tra quyền truy cập camera hoặc thiết bị camera.</div>
             </div>
           ) : null}
-          <div style={styles.scanLine} />
+          <div style={styles.scanFrame}>
+          <div ref={scanLineRef} style={styles.scanLine} />
+          </div>
 
           {!cameraReady ? (
             <div style={styles.cameraStatus}>
