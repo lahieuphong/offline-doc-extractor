@@ -1,0 +1,50 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Root env files
+.env
+.env.*
+!.env.example
+
+# Frontend (Next.js)
+FE/node_modules/
+FE/.next/
+FE/out/
+FE/.turbo/
+FE/.vercel/
+FE/coverage/
+FE/*.log
+FE/.env
+FE/.env.*
+!FE/.env.example
+
+# Backend (Python)
+BE/.venv/
+BE/venv/
+BE/env/
+BE/__pycache__/
+BE/**/*.py[cod]
+BE/.pytest_cache/
+BE/.mypy_cache/
+BE/.ruff_cache/
+BE/.coverage
+BE/htmlcov/
+BE/*.log
+BE/.env
+BE/.env.*
+!BE/.env.example
+
+# Runtime storage (generated files)
+BE/storage/uploads/
+BE/storage/exports/
+
+# Generic archives / binaries
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+*.sqlite
+*.db
