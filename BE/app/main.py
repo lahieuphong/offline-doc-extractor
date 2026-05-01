@@ -2,6 +2,7 @@ import shutil
 import uuid
 import os
 import time
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,6 +49,21 @@ METADATA_22_KEYS = [
     "description",
     "isCan",
 ]
+
+
+EXTRACTION_ARTIFACT_PATTERNS = [
+    r"^\s*---\s*PAGE\s+\d+\s*/\s*\d+\s*---\s*$",
+    r"^\s*---\s*PAGE\s+\d+\s+OCR\s*---\s*$",
+    r"^\s*\[\s*TEXT_LAYER\s*\]\s*$",
+    r"^\s*\[\s*OCR_TEXT\s*\]\s*$",
+]
+EXTRACTION_ARTIFACT_INLINE_PATTERNS = [
+    r"\s*---\s*PAGE\s+\d+\s*/\s*\d+\s*---\s*",
+    r"\s*---\s*PAGE\s+\d+\s+OCR\s*---\s*",
+    r"\s*\[\s*TEXT_LAYER\s*\]\s*",
+    r"\s*\[\s*OCR_TEXT\s*\]\s*",
+]
+
 
 app = FastAPI(title="Offline Document AI Backend")
 
@@ -105,11 +121,12 @@ def normalize_result(
     extension: Optional[str] = None,
     error_message: Optional[str] = None,
 ) -> Dict[str, Any]:
+    sanitized_data = sanitize_result_data(data)
     result = {
         "source_filename": source_filename,
         "extraction_method": extraction_method,
         "error_message": error_message,
-        **data,
+        **sanitized_data,
     }
 
     if result.get("page_count") is None:
@@ -163,6 +180,37 @@ def normalize_result(
         result[key] = metadata_values.get(key)
 
     return result
+
+
+def strip_extraction_artifacts(text: str) -> str:
+    cleaned = text
+    for pattern in EXTRACTION_ARTIFACT_INLINE_PATTERNS:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+    for pattern in EXTRACTION_ARTIFACT_PATTERNS:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
+
+    # Xoa marker OCR timeout trong noi dung hien thi, tranh leak text ky thuat.
+    cleaned = re.sub(r"\[\s*OCR_TIMEOUT\s*\]", "", cleaned, flags=re.IGNORECASE)
+
+    # Thu gon khoang trang/newline sau khi loc marker.
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def sanitize_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return strip_extraction_artifacts(value)
+    if isinstance(value, list):
+        return [sanitize_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: sanitize_value(item) for key, item in value.items()}
+    return value
+
+
+def sanitize_result_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: sanitize_value(value) for key, value in data.items()}
 
 
 def process_one_file(
@@ -227,6 +275,7 @@ def process_stored_file(
         print(f"[extract:start] file={original_filename} path={stored_path.name} mode={pdf_read_mode}", flush=True)
         started_at = time.time()
         document_text, page_count = extract_text(stored_path, pdf_read_mode=pdf_read_mode)
+        document_text = strip_extraction_artifacts(document_text)
 
         if not document_text.strip():
             raise ValueError("No text found after extraction/OCR.")

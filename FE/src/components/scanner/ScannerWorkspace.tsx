@@ -558,7 +558,7 @@ export default function ScannerWorkspace() {
       </main>
 
       <header style={styles.topBar}>
-        <button type="button" style={styles.backBtn} onClick={() => history.back()}>
+        <button type="button" style={styles.backBtn} onClick={() => router.push("/media")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 20, height: 20 }} aria-hidden="true">
             <path d="m12 19-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M19 12H5" strokeLinecap="round" strokeLinejoin="round" />
@@ -570,7 +570,7 @@ export default function ScannerWorkspace() {
       <SharedBottomBar
         leftLabel="Quay lại"
         leftIcon={<span aria-hidden="true">←</span>}
-        onLeftClick={() => history.back()}
+        onLeftClick={() => router.push("/media")}
         rightLabel="Bắt đầu quét"
         rightIcon={<span aria-hidden="true">→</span>}
         rightDisabled={totalReadyItems <= 0}

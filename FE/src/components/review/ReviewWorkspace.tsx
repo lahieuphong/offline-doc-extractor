@@ -460,6 +460,11 @@ export default function ReviewWorkspace() {
     setActiveId(null);
   }
 
+  function handleBackToScanner() {
+    clearFiles();
+    router.push("/scanner");
+  }
+
   function toggleFileSelection(id: string) {
     const wasSelected = selectedIds.has(id);
     const nextSelected = new Set(selectedIds);
@@ -632,7 +637,7 @@ export default function ReviewWorkspace() {
   return (
     <div style={styles.page}>
       <div style={styles.headerFullBleed}>
-        <SharedTopBar title="Scan Giấy tờ / Tài liệu" onBackClick={() => history.back()} />
+        <SharedTopBar title="Scan Giấy tờ / Tài liệu" onBackClick={handleBackToScanner} />
       </div>
 
       <FileDropzone fileInputRef={fileInputRef} onAddFiles={addFiles} />
@@ -678,7 +683,7 @@ export default function ReviewWorkspace() {
       <SharedBottomBar
         leftLabel="Quay lại"
         leftIcon={<span aria-hidden="true">←</span>}
-        onLeftClick={clearFiles}
+        onLeftClick={handleBackToScanner}
         rightLabel={loading ? "Đang xử lý..." : "Extract File"}
         rightIcon={<span aria-hidden="true">⇅</span>}
         rightDisabled={loading || selectedFiles.length === 0}

@@ -15,6 +15,7 @@ FE/out/
 FE/.turbo/
 FE/.vercel/
 FE/coverage/
+FE/*.tsbuildinfo
 FE/*.log
 FE/.env
 FE/.env.*
