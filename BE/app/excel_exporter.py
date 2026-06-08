@@ -75,22 +75,31 @@ def export_results_to_excel(results: List[Dict[str, Any]], output_path: Path) ->
 
         sheet.append(row)
 
-    for column_index, _column in enumerate(EXCEL_COLUMNS, start=1):
-        column_letter = get_column_letter(column_index)
-        sheet.column_dimensions[column_letter].width = 24
-    sheet.column_dimensions["A"].width = 8
+    # Widths tuned for 22-field administrative metadata.  Long fields are kept
+    # fully in-cell (wrapped) instead of being truncated.
+    column_widths = {
+        "A": 8, "B": 20, "C": 22, "D": 24, "E": 16, "F": 12, "G": 18, "H": 14,
+        "I": 24, "J": 72, "K": 14, "L": 10, "M": 38, "N": 46, "O": 14, "P": 38,
+        "Q": 34, "R": 12, "S": 46, "T": 24, "U": 28, "V": 58, "W": 24,
+    }
+    for column_letter, width in column_widths.items():
+        sheet.column_dimensions[column_letter].width = width
 
+    sheet.row_dimensions[1].height = 36
     for row in sheet.iter_rows():
+        if row[0].row > 1:
+            sheet.row_dimensions[row[0].row].height = 72
         for cell in row:
             if cell.row > 1:
                 cell.font = body_font
                 cell.border = thin_border
-                if cell.column == 1:
+                if cell.column in {1, 6, 8, 11, 12, 18}:
                     cell.alignment = Alignment(horizontal="center", vertical="top", wrap_text=True)
                 else:
                     cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
     sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(output_path)

@@ -26,9 +26,13 @@ UPLOADS_DIR = STORAGE_DIR / "uploads"
 EXPORTS_DIR = STORAGE_DIR / "exports"
 MAX_WORKERS = max(1, int(os.getenv("EXTRACT_MAX_WORKERS", "1")))
 FILE_PROCESS_RETRIES = max(0, int(os.getenv("FILE_PROCESS_RETRIES", "1")))
-MAX_TEXT_CHARS = max(1000, int(os.getenv("MAX_TEXT_CHARS", "5000")))
+MAX_TEXT_CHARS = max(1000, int(os.getenv("MAX_TEXT_CHARS", "12000")))
 LLM_DISABLE_FOR_FULL_PDF = os.getenv("LLM_DISABLE_FOR_FULL_PDF", "true").lower() in {"1", "true", "yes", "on"}
-ENABLE_LLM_BACKFILL_ON_MISSING = os.getenv("ENABLE_LLM_BACKFILL_ON_MISSING", "true").lower() in {"1", "true", "yes", "on"}
+STRICT_NO_GUESS_MODE = os.getenv("STRICT_NO_GUESS_MODE", "true").lower() in {"1", "true", "yes", "on"}
+ENABLE_LLM_BACKFILL_ON_MISSING = (
+    os.getenv("ENABLE_LLM_BACKFILL_ON_MISSING", "false").lower() in {"1", "true", "yes", "on"}
+    and not STRICT_NO_GUESS_MODE
+)
 LLM_BACKFILL_MIN_MISSING = max(1, int(os.getenv("LLM_BACKFILL_MIN_MISSING", "3")))
 JOBS_EXPORT_DIR = EXPORTS_DIR / "jobs"
 
@@ -99,6 +103,7 @@ def health():
     return {
         "status": "ok",
         "message": "Offline Document AI Backend is running.",
+        "strict_no_guess_mode": STRICT_NO_GUESS_MODE,
     }
 
 
@@ -264,7 +269,7 @@ def normalize_result(
 
     # Giữ nguyên schema hiện tại, chỉ bổ sung thêm 22 trường metadata để tương thích.
     metadata_values = {
-        "docId": result.get("docId") or (f"{batch_id}:{source_filename}" if batch_id else source_filename),
+        "docId": result.get("docId") or Path(source_filename).stem,
         "arcDocCode": result.get("arcDocCode") or result.get("document_code"),
         "maintenance": result.get("maintenance"),
         "typeName": result.get("typeName") or result.get("document_type"),
@@ -375,7 +380,7 @@ def process_one_file(
     upload_file: UploadFile,
     batch_id: str,
     use_llm: bool,
-    pdf_read_mode: str = "first_page",
+    pdf_read_mode: str = "first_and_last_page",
 ) -> Dict[str, Any]:
     original_filename = upload_file.filename or "uploaded_file"
 
@@ -427,7 +432,7 @@ def process_stored_file(
     original_filename: str,
     batch_id: str,
     use_llm: bool,
-    pdf_read_mode: str = "first_page",
+    pdf_read_mode: str = "first_and_last_page",
 ) -> Dict[str, Any]:
     try:
         print(f"[extract:start] file={original_filename} path={stored_path.name} mode={pdf_read_mode}", flush=True)
@@ -438,7 +443,7 @@ def process_stored_file(
         if not document_text.strip():
             raise ValueError("No text found after extraction/OCR.")
 
-        use_llm_effective = use_llm
+        use_llm_effective = bool(use_llm) and not STRICT_NO_GUESS_MODE
         if pdf_read_mode == "full_pdf" and LLM_DISABLE_FOR_FULL_PDF:
             use_llm_effective = False
 
@@ -452,7 +457,7 @@ def process_stored_file(
                 extraction_method = "rule_based_fallback_after_llm_error"
         else:
             data = extract_by_rules(document_text, page_count=page_count)
-            extraction_method = "rule_based"
+            extraction_method = "rule_based_strict_no_guess" if STRICT_NO_GUESS_MODE else "rule_based"
 
         if not use_llm_effective and ENABLE_LLM_BACKFILL_ON_MISSING and should_trigger_llm_backfill(data):
             try:
@@ -468,6 +473,7 @@ def process_stored_file(
             extraction_method=extraction_method,
             page_count=page_count,
             extension=stored_path.suffix.lower(),
+            source_filename=original_filename,
         )
 
         result = normalize_result(
@@ -522,7 +528,7 @@ def process_stored_file_with_retry(
     original_filename: str,
     batch_id: str,
     use_llm: bool,
-    pdf_read_mode: str = "first_page",
+    pdf_read_mode: str = "first_and_last_page",
 ) -> Dict[str, Any]:
     last_result: Optional[Dict[str, Any]] = None
     for attempt in range(FILE_PROCESS_RETRIES + 1):
@@ -601,8 +607,8 @@ def process_files_parallel(
 @app.post("/api/extract-excel")
 async def extract_excel(
     files: List[UploadFile] = File(...),
-    use_llm: bool = Form(True),
-    pdf_read_mode: str = Form("first_page"),
+    use_llm: bool = Form(False),
+    pdf_read_mode: str = Form("first_and_last_page"),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
@@ -645,8 +651,8 @@ async def extract_excel(
 @app.post("/api/extract-json")
 async def extract_json(
     files: List[UploadFile] = File(...),
-    use_llm: bool = Form(True),
-    pdf_read_mode: str = Form("first_page"),
+    use_llm: bool = Form(False),
+    pdf_read_mode: str = Form("first_and_last_page"),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")

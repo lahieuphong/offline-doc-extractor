@@ -99,3 +99,4 @@ def process_batch_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         },
     )
     return output_payload
+

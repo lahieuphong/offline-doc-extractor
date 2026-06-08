@@ -20,6 +20,16 @@ services:
       JOB_QUEUE_NAME: ${JOB_QUEUE_NAME}
       CORS_ORIGINS: ${CORS_ORIGINS}
       STORAGE_DIR: ${STORAGE_DIR}
+      OCR_TESSERACT_PSM: ${OCR_TESSERACT_PSM:-6}
+      OCR_TARGETED_REGIONS: ${OCR_TARGETED_REGIONS:-1}
+      OCR_TARGETED_ZOOM: ${OCR_TARGETED_ZOOM:-3.0}
+      OCR_TARGETED_TIMEOUT_SEC: ${OCR_TARGETED_TIMEOUT_SEC:-12}
+      OCR_TIMEOUT_SEC: ${OCR_TIMEOUT_SEC:-45}
+      OCR_RENDER_ZOOM: ${OCR_RENDER_ZOOM:-2.0}
+      OCR_MULTI_VARIANT: ${OCR_MULTI_VARIANT:-0}
+      OCR_TESSERACT_OEM: ${OCR_TESSERACT_OEM:-1}
+      OCR_FULL_PAGE: ${OCR_FULL_PAGE:-0}
+      OMP_THREAD_LIMIT: ${OMP_THREAD_LIMIT:-1}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -44,6 +54,16 @@ services:
       USE_LLM_DEFAULT: ${USE_LLM_DEFAULT}
       CORS_ORIGINS: ${CORS_ORIGINS}
       STORAGE_DIR: ${STORAGE_DIR}
+      OCR_TESSERACT_PSM: ${OCR_TESSERACT_PSM:-6}
+      OCR_TARGETED_REGIONS: ${OCR_TARGETED_REGIONS:-1}
+      OCR_TARGETED_ZOOM: ${OCR_TARGETED_ZOOM:-3.0}
+      OCR_TARGETED_TIMEOUT_SEC: ${OCR_TARGETED_TIMEOUT_SEC:-12}
+      OCR_TIMEOUT_SEC: ${OCR_TIMEOUT_SEC:-45}
+      OCR_RENDER_ZOOM: ${OCR_RENDER_ZOOM:-2.0}
+      OCR_MULTI_VARIANT: ${OCR_MULTI_VARIANT:-0}
+      OCR_TESSERACT_OEM: ${OCR_TESSERACT_OEM:-1}
+      OCR_FULL_PAGE: ${OCR_FULL_PAGE:-0}
+      OMP_THREAD_LIMIT: ${OMP_THREAD_LIMIT:-1}
     command: ["rq", "worker", "${JOB_QUEUE_NAME:-extract_jobs}", "--url", "${REDIS_URL:-redis://redis:6379/0}"]
     volumes:
       - ../${STORAGE_DIR:-storage}:/app/storage
@@ -55,13 +75,9 @@ services:
     build:
       context: ../FE
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL}
     container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_frontend
-    env_file:
-      - ./.env
     environment:
-      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL}
+      BACKEND_URL: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

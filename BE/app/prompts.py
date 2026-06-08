@@ -89,10 +89,13 @@ Quy tắc:
 - Nếu một field có nhiều giá trị thì trả về array.
 - articles phải là array object gồm article_number, article_title, article_content.
 - Không tự bịa dữ liệu.
-- Với `summary`: ưu tiên trích đúng cụm trích yếu ngay dưới dòng loại văn bản (ví dụ: THÔNG TƯ/THÔNG BÁO/QUYẾT ĐỊNH...), giữ nguyên ngữ nghĩa hành chính, gộp các dòng bị xuống hàng.
-- Không dùng danh sách Điều (ví dụ "1. Điều 1...", "2. Điều 2...") làm `summary`.
-- Loại bỏ ký tự OCR rác (ví dụ: `i > i`, ký tự đứt đoạn) trước khi điền `summary`.
-- Nếu OCR bị lỗi, hãy suy luận thận trọng và ghi chú trong notes.
+- Với `summary`, `title`, `subject`: ưu tiên trích đúng CỤM TRÍCH YẾU ngay dưới dòng loại văn bản (THÔNG TƯ/THÔNG BÁO/QUYẾT ĐỊNH/NGHỊ QUYẾT...) hoặc dòng `V/v` của công văn; gộp các dòng xuống hàng thành một câu hoàn chỉnh; tuyệt đối không cắt cụt phần cuối, đặc biệt các cụm ngày tháng như `ngày ... tháng ... năm ...`.
+- Tuyệt đối không lấy phần căn cứ pháp lý, phần `Điều 1`, danh sách điều khoản, `Nơi nhận`, thông tin ký số, dấu đến, `Kính gửi` làm trích yếu.
+- Nếu trích yếu có cụm tên nước như `Cộng hòa xã hội chủ nghĩa Việt Nam` trong tên hiệp định/thỏa thuận thì phải giữ lại, không được xem là quốc hiệu nhiễu.
+- Với `description`: viết mô tả sạch dựa trên trích yếu chắc chắn; không cắt cụt giữa câu. Nếu trích yếu bị nhiễu OCR hoặc thiếu bằng chứng thì để null, không được tự đoán.
+- Không sửa tự do làm đổi nghĩa văn bản. Chỉ chuẩn hóa lỗi OCR phổ biến, chắc chắn: `sửa đỗi` -> `sửa đổi`, `bỗ sung` -> `bổ sung`, `bãi bé` -> `bãi bỏ`, `thúc day` -> `thúc đẩy`, `Phụ luc` -> `Phụ lục`, `tong thé` -> `tổng thể`, `bo nhiệm` -> `bổ nhiệm`.
+- Không đưa vào JSON các mảnh OCR rác như `GONG THONG`, `CHINA PHU`, `DIENT`, `TNĐIỆN`, ký tự `|`, `<`, `>`, `[OCR_TEXT]`, `[TEXT_LAYER]`, `--- PAGE ...`.
+- Nếu OCR bị lỗi nặng, chỉ điền field khi có bằng chứng rõ trong văn bản; trường còn nghi ngờ đưa vào `missing_fields` và ghi trong `notes`. Ưu tiên null hơn là xuất text sai chính tả.
 - confidence là số từ 0 đến 1.
 - missing_fields là danh sách field bị null.
 

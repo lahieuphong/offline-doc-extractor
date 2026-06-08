@@ -1,9 +1,11 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from app.vn_admin_metadata import enrich_vn_admin_metadata_22
 
-SUBJECT_MAX_CHARS = 1400
-SUBJECT_MIN_CHARS = 40
+
+SUBJECT_MAX_CHARS = 8000
+SUBJECT_MIN_CHARS = 25
 NOISE_MARKERS = (
     "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
     "ĐỘC LẬP - TỰ DO - HẠNH PHÚC",
@@ -338,6 +340,7 @@ def enrich_for_22_fields(
     extraction_method: str,
     page_count: Optional[int],
     extension: str,
+    source_filename: Optional[str] = None,
 ) -> Dict[str, Any]:
     enriched = dict(data)
     text = _clean_spaces(document_text)
@@ -406,5 +409,20 @@ def enrich_for_22_fields(
 
     if not enriched.get("format"):
         enriched["format"] = extension.lower().lstrip(".")
+
+    # Chuẩn hóa cuối cùng theo 22 trường metadata của văn bản hành chính Việt Nam.
+    # Hàm này chỉ bổ sung/ghi đè các trường output, không thay đổi API hay giao diện.
+    try:
+        enriched = enrich_vn_admin_metadata_22(
+            data=enriched,
+            document_text=document_text,
+            extraction_method=extraction_method,
+            page_count=page_count,
+            extension=extension,
+            source_filename=source_filename,
+        )
+    except Exception as error:
+        # Không làm hỏng luồng xử lý hiện tại nếu bộ chuẩn hóa gặp OCR quá xấu.
+        enriched["metadata_22_error"] = str(error)
 
     return enriched

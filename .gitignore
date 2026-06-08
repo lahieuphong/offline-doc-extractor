@@ -45,6 +45,7 @@ storage/uploads/
 storage/exports/
 BE/storage/uploads/
 BE/storage/exports/
+BE/storage/logs/
 
 # Deploy artifacts
 deploy/images/
@@ -57,3 +58,5 @@ deploy/images/
 *.7z
 *.sqlite
 *.db
+*.rdb
+dump.rdb
