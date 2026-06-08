@@ -2,6 +2,14 @@ import re
 from typing import Any, Dict, List, Optional
 
 
+def _strip_accents(text: str) -> str:
+    table = str.maketrans(
+        "àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ",
+        "aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd",
+    )
+    return text.lower().translate(table)
+
+
 def clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
@@ -13,6 +21,7 @@ def find_document_code(text: str) -> Optional[str]:
     patterns = [
         r"Số\s*[:：]?\s*([0-9]+)\s*/\s*([A-ZĐ\-]+)",
         r"Số\s*[:：]?\s*([0-9]+/[A-ZĐ\-]+)",
+        r"\b([0-9]{1,6}\s*/\s*[A-ZĐ]{1,}(?:-[A-ZĐ0-9]{1,}){1,5})\b",
     ]
 
     for pattern in patterns:
@@ -21,7 +30,7 @@ def find_document_code(text: str) -> Optional[str]:
         if match:
             if len(match.groups()) == 2:
                 return f"{match.group(1)}/{match.group(2)}".replace(" ", "")
-            return match.group(1).replace(" ", "")
+            return re.sub(r"\s+", "", match.group(1))
 
     return None
 
@@ -53,6 +62,18 @@ def find_document_type(text: str) -> Optional[str]:
     for document_type in document_types:
         if document_type in upper_text:
             return document_type.title()
+
+    code = find_document_code(text)
+    if code:
+        code_upper = code.upper()
+        if any(token in code_upper for token in ["QĐ", "QD-"]):
+            return "Quyết Định"
+        if "NQ" in code_upper:
+            return "Nghị Quyết"
+        if any(token in code_upper for token in ["CV", "VPCP-CN", "VPCP-KTTH"]):
+            return "Công Văn"
+        if "TT" in code_upper:
+            return "Thông Tư"
 
     return None
 
@@ -285,9 +306,161 @@ def detect_page_count(text: str) -> Optional[int]:
     return max(int(page) for page in matches)
 
 
-def build_summary(title: Optional[str], articles: List[Dict[str, Any]]) -> Optional[str]:
+def build_summary(text: str, title: Optional[str], articles: List[Dict[str, Any]]) -> Optional[str]:
     if title:
         return title
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    skip_markers = (
+        "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+        "Độc lập - Tự do - Hạnh phúc".upper(),
+        "Số:",
+        "Căn cứ",
+        "Nơi nhận",
+        "TM.",
+        "KT.",
+        "NGƯỜI KÝ",
+        "CÔNG THÔNG TIN ĐIỆN TỬ",
+        "VĂN PHÒNG CHÍNH PHỦ",
+        "THỜI GIAN KÝ",
+        "EMAIL:",
+    )
+
+    summary_start_patterns = (
+        "ve viec",
+        "quy dinh",
+        "ban hanh",
+        "sua doi",
+        "bo sung",
+        "huong dan",
+        "cong bo",
+        "phe duyet",
+        "bai bo",
+        "ket luan",
+    )
+
+    def is_heading_signal(line: str) -> bool:
+        normalized = _strip_accents(re.sub(r"\s+", " ", line).strip(" .;:-"))
+        return any(normalized.startswith(pat) for pat in summary_start_patterns)
+
+    def is_stop_line(line: str) -> bool:
+        compact = re.sub(r"^[^A-Za-zÀ-Ỹà-ỹĐđ0-9]+", "", line.strip())
+        return bool(
+            re.match(r"^(Căn cứ|Điều\s+\d+|Nơi nhận)\b", compact, flags=re.IGNORECASE)
+            or re.match(r"^Ngày\s+\d{1,2}\s+tháng\s+\d{1,2}\s+năm\s+\d{4}", compact, flags=re.IGNORECASE)
+            or re.match(r"^\d+\.\s*", compact)
+        )
+
+    def clean_heading_piece(line: str) -> str:
+        piece = re.sub(r"\s+", " ", line).strip(" .;:-")
+        piece = re.sub(r"^[^A-Za-zÀ-Ỹà-ỹĐđ]+", "", piece)
+        piece = re.sub(
+            r"\b(C[OÔ]NG|GONG)\s+TH[OÔ]NG\s+TIN\s+ĐI[ỆE]N?\s*T[UƯ]\s+CH[ÍI]NH\s+PH[UƯ]\b",
+            "",
+            piece,
+            flags=re.IGNORECASE,
+        )
+        piece = re.sub(r"^[A-Za-z]{1,3}\s*,\s*(?=của\s+Thủ tướng Chính phủ)", "", piece, flags=re.IGNORECASE)
+        if "của Thủ tướng Chính phủ" in piece and not piece.lower().startswith("kết luận"):
+            piece = f"Kết luận {piece}"
+        piece = re.split(r"\bCăn cứ\b", piece, maxsplit=1, flags=re.IGNORECASE)[0].strip(" .;:-")
+        return piece.strip(" .;:-")
+
+    # Với thông báo/công văn: lấy trích yếu ngay sau dòng Số:/ký hiệu.
+    for idx, line in enumerate(lines[:50]):
+        if not re.search(r"/(?:TB|CV|VPCP)-[A-ZĐ0-9\-]+", line.upper()):
+            continue
+        buffer: List[str] = []
+        for next_line in lines[idx + 1 : idx + 9]:
+            candidate = next_line.strip()
+            candidate_upper = candidate.upper()
+            if not candidate:
+                if buffer:
+                    break
+                continue
+            if any(marker in candidate_upper for marker in skip_markers):
+                continue
+            if is_stop_line(candidate):
+                break
+            cleaned_piece = clean_heading_piece(candidate)
+            if len(cleaned_piece) < 6:
+                continue
+            buffer.append(cleaned_piece)
+        merged = re.sub(r"\s+", " ", " ".join(buffer)).strip(" .;:-")
+        if merged and len(merged) >= 25:
+            return merged[:700]
+
+    # Ưu tiên lấy block trích yếu ở phần đầu trang (nhiều dòng liên tiếp).
+    top_lines = lines[:45]
+    for idx, line in enumerate(top_lines):
+        upper_line = line.upper()
+        if any(marker in upper_line for marker in skip_markers):
+            continue
+        if re.match(r"^(NGƯỜI KÝ|KÝ BỞI|SIGNER)\s*[:：]", upper_line):
+            continue
+        if not is_heading_signal(line):
+            continue
+
+        buffer: List[str] = [clean_heading_piece(line)]
+        for next_line in top_lines[idx + 1 : idx + 10]:
+            candidate = next_line.strip()
+            candidate_upper = candidate.upper()
+            if not candidate:
+                if len(buffer) > 1:
+                    break
+                continue
+            if any(marker in candidate_upper for marker in skip_markers):
+                continue
+            if is_stop_line(candidate):
+                break
+            cleaned_piece = clean_heading_piece(candidate)
+            if len(cleaned_piece) < 4:
+                continue
+            buffer.append(cleaned_piece)
+
+        merged = re.sub(r"\s+", " ", " ".join(item for item in buffer if item)).strip(" .;:-")
+        if merged and len(merged) >= 30:
+            return merged[:700]
+
+    # Ưu tiên tìm câu trích yếu theo mẫu văn bản pháp lý Việt Nam.
+    for line in lines:
+        upper_line = line.upper()
+        normalized_line = re.sub(r"\s+", " ", line).strip(" .;:-")
+        if len(normalized_line) < 12:
+            continue
+        if any(marker in upper_line for marker in skip_markers):
+            continue
+        if re.match(r"^(NGƯỜI KÝ|KÝ BỞI|SIGNER)\s*[:：]", upper_line):
+            continue
+        if is_heading_signal(line):
+            return normalized_line[:300]
+
+    # Ưu tiên đoạn sau tiêu đề nếu tiêu đề chưa đúng chuẩn.
+    joined_text = " ".join(lines)
+    pattern_after_type = (
+        r"(?:NGHỊ QUYẾT|NGHỊ ĐỊNH|QUYẾT ĐỊNH|THÔNG TƯ|CÔNG VĂN|CHỈ THỊ)"
+        r".{0,120}?"
+        r"(Về việc|Quy định|Ban hành|Sửa đổi|Bổ sung)\s+(.+?)(?:\.|;|Điều\s+1|Căn cứ)"
+    )
+    match_after_type = re.search(pattern_after_type, joined_text, flags=re.IGNORECASE | re.DOTALL)
+    if match_after_type:
+        verb = match_after_type.group(1).strip()
+        content = re.sub(r"\s+", " ", match_after_type.group(2)).strip(" .;:-")
+        if content:
+            return f"{verb} {content}"[:300]
+
+    for line in lines:
+        upper_line = line.upper()
+        if any(marker in upper_line for marker in skip_markers):
+            continue
+        if re.match(r"^(NGƯỜI KÝ|KÝ BỞI|SIGNER)\s*[:：]", upper_line):
+            continue
+        if len(line) < 20:
+            continue
+        # Ưu tiên câu/đoạn mở đầu có ý nghĩa nghiệp vụ làm trích yếu.
+        candidate = re.sub(r"\s+", " ", line).strip(" .;:-")
+        if candidate:
+            return candidate[:300]
 
     if articles:
         first_content = articles[0].get("article_content")
@@ -331,7 +504,7 @@ def extract_by_rules(text: str, page_count: Optional[int] = None) -> Dict[str, A
         "place_of_issue": issue_info["place_of_issue"],
         "issued_date": issue_info["issued_date"],
         "title": title,
-        "summary": build_summary(title, articles),
+        "summary": build_summary(text, title, articles),
         "legal_bases": legal_bases,
         "main_content": articles[0]["article_content"] if articles else None,
         "articles": articles,

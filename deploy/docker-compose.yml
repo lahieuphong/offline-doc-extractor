@@ -1,0 +1,80 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_redis
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../BE
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_backend
+    env_file:
+      - ./.env
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      MAX_TEXT_CHARS: ${MAX_TEXT_CHARS}
+      USE_LLM_DEFAULT: ${USE_LLM_DEFAULT}
+      REDIS_URL: ${REDIS_URL}
+      JOB_QUEUE_NAME: ${JOB_QUEUE_NAME}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      STORAGE_DIR: ${STORAGE_DIR}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ../${STORAGE_DIR:-storage}:/app/storage
+    depends_on:
+      - redis
+      - ollama
+
+  worker:
+    build:
+      context: ../BE
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_worker
+    env_file:
+      - ./.env
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      MAX_TEXT_CHARS: ${MAX_TEXT_CHARS}
+      REDIS_URL: ${REDIS_URL}
+      JOB_QUEUE_NAME: ${JOB_QUEUE_NAME}
+      USE_LLM_DEFAULT: ${USE_LLM_DEFAULT}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      STORAGE_DIR: ${STORAGE_DIR}
+    command: ["rq", "worker", "${JOB_QUEUE_NAME:-extract_jobs}", "--url", "${REDIS_URL:-redis://redis:6379/0}"]
+    volumes:
+      - ../${STORAGE_DIR:-storage}:/app/storage
+    depends_on:
+      - redis
+      - ollama
+
+  frontend:
+    build:
+      context: ../FE
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL}
+    container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_frontend
+    env_file:
+      - ./.env
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

@@ -89,6 +89,9 @@ Quy tắc:
 - Nếu một field có nhiều giá trị thì trả về array.
 - articles phải là array object gồm article_number, article_title, article_content.
 - Không tự bịa dữ liệu.
+- Với `summary`: ưu tiên trích đúng cụm trích yếu ngay dưới dòng loại văn bản (ví dụ: THÔNG TƯ/THÔNG BÁO/QUYẾT ĐỊNH...), giữ nguyên ngữ nghĩa hành chính, gộp các dòng bị xuống hàng.
+- Không dùng danh sách Điều (ví dụ "1. Điều 1...", "2. Điều 2...") làm `summary`.
+- Loại bỏ ký tự OCR rác (ví dụ: `i > i`, ký tự đứt đoạn) trước khi điền `summary`.
 - Nếu OCR bị lỗi, hãy suy luận thận trọng và ghi chú trong notes.
 - confidence là số từ 0 đến 1.
 - missing_fields là danh sách field bị null.

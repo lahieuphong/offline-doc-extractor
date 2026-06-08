@@ -3,13 +3,18 @@
 .vscode/
 .idea/
 
-# Root env files
+# Env files
 .env
 .env.*
 !.env.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
 
-# Frontend (Next.js)
+# Frontend / Node
+node_modules/
 FE/node_modules/
+.next/
 FE/.next/
 FE/out/
 FE/.turbo/
@@ -17,29 +22,32 @@ FE/.vercel/
 FE/coverage/
 FE/*.tsbuildinfo
 FE/*.log
-FE/.env
-FE/.env.*
-!FE/.env.example
 
-# Backend (Python)
+# Python
+.venv/
+venv/
 BE/.venv/
 BE/venv/
 BE/env/
+__pycache__/
 BE/__pycache__/
-BE/**/*.py[cod]
+**/__pycache__/
+*.py[cod]
 BE/.pytest_cache/
 BE/.mypy_cache/
 BE/.ruff_cache/
 BE/.coverage
 BE/htmlcov/
 BE/*.log
-BE/.env
-BE/.env.*
-!BE/.env.example
 
-# Runtime storage (generated files)
+# Storage data
+storage/uploads/
+storage/exports/
 BE/storage/uploads/
 BE/storage/exports/
+
+# Deploy artifacts
+deploy/images/
 
 # Generic archives / binaries
 *.zip

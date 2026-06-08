@@ -7,3 +7,5 @@ requests
 pillow
 pytesseract
 openpyxl
+redis
+rq

@@ -64,6 +64,24 @@ type ExtractJsonResponse = {
   results?: Record<string, unknown>[];
 };
 
+type JobSubmitResponse = {
+  job_id?: string;
+  batch_id?: string;
+  status?: string;
+  total_files?: number;
+};
+
+type JobStatusResponse = {
+  job_id?: string;
+  status?: string;
+  batch_id?: string;
+  total_files?: number;
+  processed_files?: number;
+  failed_files?: number;
+  progress_percent?: number;
+  error?: string | null;
+};
+
 type ProgressState = {
   visible: boolean;
   totalFiles: number;
@@ -237,14 +255,14 @@ const initialProgress: ProgressState = {
   totalChunks: 0,
   currentChunkSize: 0,
 };
-const EXTRACT_CHUNK_SIZE = 10;
+const JOB_POLL_INTERVAL_MS = 1200;
 
 export default function ReviewWorkspace() {
   const router = useRouter();
   const [files, setFiles] = useState<SelectedFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [useLlm] = useState(true);
+  const [useLlm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [, setMessage] = useState("Chưa xử lý file nào.");
   const [showExtractModal, setShowExtractModal] = useState(false);
@@ -521,89 +539,82 @@ export default function ReviewWorkspace() {
       currentFilePercent: 0,
       completedFiles: 0,
       currentChunkIndex: 1,
-      totalChunks: Math.max(1, Math.ceil(selectedFiles.length / EXTRACT_CHUNK_SIZE)),
-      currentChunkSize: Math.min(EXTRACT_CHUNK_SIZE, selectedFiles.length),
+      totalChunks: 1,
+      currentChunkSize: selectedFiles.length,
     });
 
-    const aggregatedResults: Record<string, unknown>[] = [];
     const aggregateBatchId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`;
 
     try {
-      for (let index = 0; index < selectedFiles.length; index += EXTRACT_CHUNK_SIZE) {
-        const chunk = selectedFiles.slice(index, index + EXTRACT_CHUNK_SIZE);
-        const chunkLabel =
-          chunk.length === 1
-            ? chunk[0].file.name
-            : `${chunk[0].file.name} ... (+${Math.max(0, chunk.length - 1)} file)`;
-        currentFileStartedAtRef.current = Date.now();
+      const formData = new FormData();
+      selectedFiles.forEach((selected) => {
+        formData.append("files", selected.file);
+      });
+      formData.append("use_llm", useLlm ? "true" : "false");
+      formData.append("pdf_read_mode", pdfReadMode);
+
+      const submitResponse = await fetch(`${BACKEND_URL}/api/jobs/submit`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!submitResponse.ok) {
+        const errorText = await submitResponse.text();
+        throw new Error(errorText || "Không thể tạo job xử lý.");
+      }
+
+      const submitPayload = (await submitResponse.json()) as JobSubmitResponse;
+      const jobId = submitPayload.job_id;
+      if (!jobId) {
+        throw new Error("Backend không trả về job_id.");
+      }
+
+      let isFinished = false;
+      while (!isFinished) {
+        await new Promise((resolve) => window.setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+        setTimeTick((prev) => prev + 1);
+
+        const statusResponse = await fetch(`${BACKEND_URL}/api/jobs/${jobId}`);
+        if (!statusResponse.ok) {
+          const errorText = await statusResponse.text();
+          throw new Error(errorText || "Không lấy được trạng thái job.");
+        }
+
+        const statusPayload = (await statusResponse.json()) as JobStatusResponse;
+        const totalFiles = Math.max(1, statusPayload.total_files ?? selectedFiles.length);
+        const completedFiles = Math.min(totalFiles, statusPayload.processed_files ?? 0);
+        const progressPercent = Math.max(0, Math.min(100, statusPayload.progress_percent ?? 0));
+        const processedEquivalent = (progressPercent / 100) * totalFiles;
+        const currentFilePercent = Math.max(0, Math.min(100, (processedEquivalent - completedFiles) * 100));
+        const currentFileNumber = Math.min(totalFiles, completedFiles + 1);
 
         setProgress((prev) => ({
           ...prev,
-          currentFileIndex: index,
-          currentFileName: chunkLabel,
-          currentFilePercent: 1,
-          completedFiles: index,
-          currentChunkIndex: Math.floor(index / EXTRACT_CHUNK_SIZE) + 1,
-          currentChunkSize: chunk.length,
+          totalFiles,
+          currentFileIndex: completedFiles,
+          currentFileName: `Job ${jobId} - file ${currentFileNumber}/${totalFiles}`,
+          currentFilePercent: completedFiles >= totalFiles ? 100 : currentFilePercent,
+          completedFiles,
+          currentChunkIndex: 1,
+          totalChunks: 1,
+          currentChunkSize: totalFiles,
         }));
 
-        const progressTimer = window.setInterval(() => {
-          setTimeTick((prev) => prev + 1);
-          setProgress((prev) => {
-            const p = prev.currentFilePercent;
-            let step = 0.03;
-
-            if (p < 55) step = 4.5;
-            else if (p < 78) step = 2.1;
-            else if (p < 90) step = 1.1;
-            else if (p < 96) step = 0.45;
-            else if (p < 99.2) step = 0.12;
-
-            const nextPercent = Math.min(99.6, p + step);
-            return { ...prev, currentFilePercent: nextPercent };
-          });
-        }, 280);
-
-        try {
-          const formData = new FormData();
-          chunk.forEach((selected) => {
-            formData.append("files", selected.file);
-          });
-          formData.append("use_llm", useLlm ? "true" : "false");
-          formData.append("pdf_read_mode", pdfReadMode);
-
-          const response = await fetch(`${BACKEND_URL}/api/extract-json`, {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText || `Xử lý thất bại tại nhóm file bắt đầu từ ${chunk[0].file.name}.`);
-          }
-
-          const payload = (await response.json()) as ExtractJsonResponse;
-          const chunkResults = payload.results ?? [];
-          if (chunkResults.length !== chunk.length) {
-            throw new Error(
-              `Backend trả về ${chunkResults.length}/${chunk.length} kết quả trong cùng nhóm file. Vui lòng thử lại.`,
-            );
-          }
-          aggregatedResults.push(...chunkResults);
-
-          setProgress((prev) => ({
-            ...prev,
-            currentFilePercent: 100,
-            completedFiles: Math.min(selectedFiles.length, index + chunk.length),
-          }));
-        } finally {
-          window.clearInterval(progressTimer);
+        if (statusPayload.status === "failed") {
+          throw new Error(statusPayload.error || "Job thất bại.");
         }
+        isFinished = statusPayload.status === "finished";
       }
 
+      const resultResponse = await fetch(`${BACKEND_URL}/api/jobs/${jobId}/result`);
+      if (!resultResponse.ok) {
+        const errorText = await resultResponse.text();
+        throw new Error(errorText || "Không tải được kết quả job.");
+      }
+      const payload = (await resultResponse.json()) as ExtractJsonResponse;
+
       const reviewResultPayload = {
-        batch_id: aggregateBatchId,
-        results: aggregatedResults,
+        batch_id: payload.batch_id ?? aggregateBatchId,
+        results: payload.results ?? [],
       };
       try {
         sessionStorage.setItem("review_result_payload", JSON.stringify(reviewResultPayload));

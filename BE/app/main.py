@@ -3,6 +3,7 @@ import uuid
 import os
 import time
 import re
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,7 +14,9 @@ from fastapi.responses import FileResponse
 
 from app.excel_exporter import export_results_to_excel
 from app.extractors import extract_text
+from app.job_queue import enqueue_batch_job, get_redis_conn
 from app.llm_client import extract_with_ollama
+from app.metadata_enricher import enrich_for_22_fields
 from app.rule_based import extract_by_rules
 
 
@@ -23,6 +26,11 @@ UPLOADS_DIR = STORAGE_DIR / "uploads"
 EXPORTS_DIR = STORAGE_DIR / "exports"
 MAX_WORKERS = max(1, int(os.getenv("EXTRACT_MAX_WORKERS", "1")))
 FILE_PROCESS_RETRIES = max(0, int(os.getenv("FILE_PROCESS_RETRIES", "1")))
+MAX_TEXT_CHARS = max(1000, int(os.getenv("MAX_TEXT_CHARS", "5000")))
+LLM_DISABLE_FOR_FULL_PDF = os.getenv("LLM_DISABLE_FOR_FULL_PDF", "true").lower() in {"1", "true", "yes", "on"}
+ENABLE_LLM_BACKFILL_ON_MISSING = os.getenv("ENABLE_LLM_BACKFILL_ON_MISSING", "true").lower() in {"1", "true", "yes", "on"}
+LLM_BACKFILL_MIN_MISSING = max(1, int(os.getenv("LLM_BACKFILL_MIN_MISSING", "3")))
+JOBS_EXPORT_DIR = EXPORTS_DIR / "jobs"
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 METADATA_22_KEYS = [
@@ -83,6 +91,7 @@ app.add_middleware(
 def startup_event():
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    JOBS_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/api/health")
@@ -112,6 +121,98 @@ def save_upload_file(upload_file: UploadFile, batch_id: str) -> Path:
     return stored_path
 
 
+def build_subject_for_export(result: Dict[str, Any]) -> Optional[str]:
+    def complete_truncated_date(text: str, issued_date: Optional[str]) -> str:
+        fixed = text
+        match = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*$", issued_date or "")
+        year_hint = match.group(3) if match else None
+        fixed = re.sub(
+            r"(ngày\s+\d{1,2}\s+tháng\s+\d{1,2})\s+nă\b(?!m)",
+            r"\1 năm",
+            fixed,
+            flags=re.IGNORECASE,
+        )
+        if year_hint:
+            fixed = re.sub(
+                r"(ngày\s+\d{1,2}\s+tháng\s+\d{1,2}\s+năm)\s*$",
+                rf"\1 {year_hint}",
+                fixed,
+                flags=re.IGNORECASE,
+            )
+        return fixed
+
+    def apply_vn_ocr_fixes(text: str) -> str:
+        fixed = text
+        replacements = [
+            (r"\bkhodn\b", "khoản"),
+            (r"\bkhoan\b", "khoản"),
+            (r"\bbỗ\s+sung\b", "bổ sung"),
+            (r"\bbỗsung\b", "bổ sung"),
+            (r"\bsửa\s+đỗi\b", "sửa đổi"),
+            (r"\bbãi\s+bé\b", "bãi bỏ"),
+            (r"\bbãi\s+bồ\b", "bãi bỏ"),
+            (r"\btai\s+cuộc\s+họp\b", "tại cuộc họp"),
+        ]
+        for pattern, replacement in replacements:
+            fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+
+        # Hoàn tất cụm ngày tháng khi OCR cắt cụt đuôi.
+        return fixed
+
+    def normalize_subject_text(value: str, issued_date: Optional[str]) -> str:
+        cleaned = strip_extraction_artifacts(value)
+        if re.search(r"(TH[OÔ]NG|THONG)\s+TIN.*CH[ÍI]NH\s+PH", cleaned, flags=re.IGNORECASE):
+            ket_luan_match = re.search(r"Kết\s*luận", cleaned, flags=re.IGNORECASE)
+            if ket_luan_match:
+                cleaned = cleaned[ket_luan_match.start() :]
+        cleaned = re.sub(
+            r"\b(C[OÔ]NG|GONG)\s+TH[OÔ]NG\s+TIN\s+(ĐI[ỆE]N?\s*)?(T[UƯ]|BIEN TU)\s+CH[ÍI]NH\s+PH[UƯ]\b",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"\baan\s+của\s+Thủ tướng Chính phủ\b", "của Thủ tướng Chính phủ", cleaned, flags=re.IGNORECASE)
+        cleaned = apply_vn_ocr_fixes(cleaned)
+        cleaned = complete_truncated_date(cleaned, issued_date)
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" .;:-")
+        return cleaned
+
+    summary = result.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        normalized = normalize_subject_text(summary, result.get("issued_date") if isinstance(result.get("issued_date"), str) else None)
+        if normalized:
+            return normalized
+
+    title = result.get("title")
+    if isinstance(title, str) and title.strip():
+        normalized = normalize_subject_text(title, result.get("issued_date") if isinstance(result.get("issued_date"), str) else None)
+        if normalized:
+            return normalized
+
+    articles = result.get("articles")
+    if isinstance(articles, list) and articles:
+        lines: List[str] = []
+        for idx, article in enumerate(articles[:6], start=1):
+            if not isinstance(article, dict):
+                continue
+            article_title = article.get("article_title")
+            article_content = article.get("article_content")
+            candidate = article_title if isinstance(article_title, str) and article_title.strip() else article_content
+            if not isinstance(candidate, str):
+                continue
+            normalized = re.sub(r"\s+", " ", candidate).strip(" .;:-")
+            if normalized:
+                lines.append(f"{idx}. {normalized[:220]}")
+        if lines:
+            return "\n".join(lines)
+
+    main_content = result.get("main_content")
+    if isinstance(main_content, str) and main_content.strip():
+        return re.sub(r"\s+", " ", main_content).strip()[:700]
+
+    return None
+
+
 def normalize_result(
     source_filename: str,
     extraction_method: str,
@@ -122,6 +223,17 @@ def normalize_result(
     error_message: Optional[str] = None,
 ) -> Dict[str, Any]:
     sanitized_data = sanitize_result_data(data)
+    issued_date_hint = sanitized_data.get("issued_date") if isinstance(sanitized_data.get("issued_date"), str) else None
+    if isinstance(sanitized_data.get("summary"), str):
+        sanitized_data["summary"] = (
+            build_subject_for_export({"summary": sanitized_data["summary"], "issued_date": issued_date_hint})
+            or sanitized_data["summary"]
+        )
+    if isinstance(sanitized_data.get("subject"), str):
+        sanitized_data["subject"] = (
+            build_subject_for_export({"summary": sanitized_data["subject"], "issued_date": issued_date_hint})
+            or sanitized_data["subject"]
+        )
     result = {
         "source_filename": source_filename,
         "extraction_method": extraction_method,
@@ -160,7 +272,7 @@ def normalize_result(
         "codeNotation": code_notation,
         "issuedDate": result.get("issuedDate") or result.get("issued_date"),
         "organName": result.get("organName") or result.get("issuing_authority"),
-        "subject": result.get("subject") or result.get("title") or result.get("summary"),
+        "subject": result.get("subject") or build_subject_for_export(result),
         "language": result.get("language") or ("vi" if result.get("title") else None),
         "numberOfPage": result.get("numberOfPage") or result.get("page_count"),
         "inforSign": result.get("inforSign") or infor_sign,
@@ -211,6 +323,52 @@ def sanitize_value(value: Any) -> Any:
 
 def sanitize_result_data(data: Dict[str, Any]) -> Dict[str, Any]:
     return {key: sanitize_value(value) for key, value in data.items()}
+
+
+def should_trigger_llm_backfill(data: Dict[str, Any]) -> bool:
+    critical_fields = ["document_type", "document_code", "issued_date", "summary", "title"]
+    missing = 0
+    for key in critical_fields:
+        value = data.get(key)
+        if value is None:
+            missing += 1
+            continue
+        if isinstance(value, str) and not value.strip():
+            missing += 1
+            continue
+    return missing >= LLM_BACKFILL_MIN_MISSING
+
+
+def merge_backfill_data(base_data: Dict[str, Any], llm_data: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base_data)
+    merge_keys = [
+        "document_type",
+        "document_number",
+        "document_code",
+        "issuing_authority",
+        "place_of_issue",
+        "issued_date",
+        "title",
+        "summary",
+        "effective_date",
+        "signer_name",
+        "signer_title",
+        "signature_block",
+        "keyword",
+    ]
+    for key in merge_keys:
+        current = merged.get(key)
+        candidate = llm_data.get(key)
+        if isinstance(candidate, str):
+            candidate = candidate.strip()
+        if candidate in (None, "", []):
+            continue
+        if current in (None, "", []):
+            merged[key] = candidate
+            continue
+        if key == "summary" and isinstance(current, str) and isinstance(candidate, str) and len(current.strip()) < 100:
+            merged[key] = candidate
+    return merged
 
 
 def process_one_file(
@@ -274,15 +432,19 @@ def process_stored_file(
     try:
         print(f"[extract:start] file={original_filename} path={stored_path.name} mode={pdf_read_mode}", flush=True)
         started_at = time.time()
-        document_text, page_count = extract_text(stored_path, pdf_read_mode=pdf_read_mode)
-        document_text = strip_extraction_artifacts(document_text)
+        raw_document_text, page_count = extract_text(stored_path, pdf_read_mode=pdf_read_mode)
+        document_text = strip_extraction_artifacts(raw_document_text)
 
         if not document_text.strip():
             raise ValueError("No text found after extraction/OCR.")
 
-        if use_llm:
+        use_llm_effective = use_llm
+        if pdf_read_mode == "full_pdf" and LLM_DISABLE_FOR_FULL_PDF:
+            use_llm_effective = False
+
+        if use_llm_effective:
             try:
-                data = extract_with_ollama(document_text[:12000])
+                data = extract_with_ollama(document_text[:MAX_TEXT_CHARS])
                 extraction_method = "ollama_local_llm"
             except Exception as error:
                 data = extract_by_rules(document_text, page_count=page_count)
@@ -291,6 +453,22 @@ def process_stored_file(
         else:
             data = extract_by_rules(document_text, page_count=page_count)
             extraction_method = "rule_based"
+
+        if not use_llm_effective and ENABLE_LLM_BACKFILL_ON_MISSING and should_trigger_llm_backfill(data):
+            try:
+                llm_backfill = extract_with_ollama(document_text[:MAX_TEXT_CHARS])
+                data = merge_backfill_data(data, llm_backfill)
+                extraction_method = f"{extraction_method}_with_llm_backfill"
+            except Exception as backfill_error:
+                data["llm_backfill_error"] = str(backfill_error)
+
+        data = enrich_for_22_fields(
+            data=data,
+            document_text=raw_document_text,
+            extraction_method=extraction_method,
+            page_count=page_count,
+            extension=stored_path.suffix.lower(),
+        )
 
         result = normalize_result(
             source_filename=original_filename,
@@ -520,5 +698,98 @@ async def export_excel_from_json(
     return FileResponse(
         path=output_path,
         filename=f"extraction_result_{batch_id}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.post("/api/jobs/submit")
+async def submit_extract_job(
+    files: List[UploadFile] = File(...),
+    use_llm: bool = Form(False),
+    pdf_read_mode: str = Form("full_pdf"),
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
+
+    batch_id = str(uuid.uuid4())
+    file_entries: List[Dict[str, Any]] = []
+
+    for file in files:
+        original_filename = file.filename or "uploaded_file"
+        stored_path = save_upload_file(file, batch_id)
+        file_entries.append(
+            {
+                "original_filename": original_filename,
+                "stored_path": str(stored_path),
+            }
+        )
+
+    payload = {
+        "batch_id": batch_id,
+        "use_llm": use_llm,
+        "pdf_read_mode": pdf_read_mode,
+        "file_entries": file_entries,
+    }
+    job = enqueue_batch_job(payload)
+
+    return {
+        "job_id": job.id,
+        "batch_id": batch_id,
+        "status": "queued",
+        "total_files": len(file_entries),
+    }
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    from rq.job import Job
+    from rq.exceptions import NoSuchJobError
+
+    redis_conn = get_redis_conn()
+    try:
+        job = Job.fetch(job_id, connection=redis_conn)
+    except NoSuchJobError as error:
+        raise HTTPException(status_code=404, detail="Job not found.") from error
+
+    status = job.get_status(refresh=True)
+    meta = dict(job.meta or {})
+
+    return {
+        "job_id": job.id,
+        "status": status,
+        "batch_id": meta.get("batch_id"),
+        "total_files": meta.get("total_files", 0),
+        "processed_files": meta.get("processed_files", 0),
+        "failed_files": meta.get("failed_files", 0),
+        "progress_percent": meta.get("progress_percent", 0.0),
+        "error": str(job.exc_info).splitlines()[-1] if status == "failed" and job.exc_info else None,
+    }
+
+
+@app.get("/api/jobs/{job_id}/result")
+async def get_job_result(job_id: str):
+    result_path = JOBS_EXPORT_DIR / f"{job_id}.json"
+    if not result_path.exists():
+        raise HTTPException(status_code=404, detail="Result not ready or job not found.")
+    return json.loads(result_path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/jobs/{job_id}/result.xlsx")
+async def get_job_result_excel(job_id: str):
+    result_path = JOBS_EXPORT_DIR / f"{job_id}.json"
+    if not result_path.exists():
+        raise HTTPException(status_code=404, detail="Result not ready or job not found.")
+
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    results = payload.get("results", [])
+    if not isinstance(results, list) or not results:
+        raise HTTPException(status_code=400, detail="No extraction results in job output.")
+
+    output_path = EXPORTS_DIR / f"extraction_result_{job_id}.xlsx"
+    export_results_to_excel(results=results, output_path=output_path)
+
+    return FileResponse(
+        path=output_path,
+        filename=f"extraction_result_{job_id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )

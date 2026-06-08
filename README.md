@@ -1,66 +1,30 @@
-# offline-doc-extractor
+# OFFLINE_DOC_EXTRACTOR
 
-Ứng dụng trích xuất thông tin tài liệu chạy local (offline):
-- `FE`: Next.js (giao diện)
-- `BE`: FastAPI Python (API xử lý tài liệu)
+He thong trich xuat tai lieu chay offline/on-premise voi:
+- `FE` (Next.js)
+- `BE` (FastAPI)
+- `Ollama` local
 
-## 1) Yêu cầu cài đặt
+Muc tieu trien khai: chay hoan toan noi bo, khong su dung OpenAI API.
 
-- Node.js 20+
-- Python 3.10+ (khuyên dùng 3.11/3.12)
+## Cau truc chinh
 
-## 2) Chạy Backend (BE)
+- `FE/`: giao dien nguoi dung
+- `BE/`: API trich xuat va export
+- `deploy/`: docker-compose + script deploy offline
+- `storage/`: du lieu runtime (`uploads/`, `exports/`)
 
-```bash
-cd BE
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-./run.sh
-```
-
-Backend mặc định chạy tại:
-- `http://127.0.0.1:8000`
-- Health check: `http://127.0.0.1:8000/api/health`
-
-Dừng backend:
+## Chay bang Docker (offline stack)
 
 ```bash
-cd BE
-./stop.sh
+cd deploy
+cp .env.example .env
+./scripts/start.sh
 ```
 
-## 3) Chạy Frontend (FE)
-
-Mở terminal mới:
+Dung stack:
 
 ```bash
-cd FE
-yarn install
-yarn dev
+cd deploy
+./scripts/stop.sh
 ```
-
-Frontend mặc định chạy tại:
-- `http://localhost:3000`
-
-Frontend gọi backend qua biến:
-- `NEXT_PUBLIC_BACKEND_URL`
-- Nếu không set thì mặc định dùng `http://127.0.0.1:8000`
-
-## 4) Build production (tuỳ chọn)
-
-### Frontend
-
-```bash
-cd FE
-yarn build
-yarn start
-```
-
-### Backend
-
-Hiện tại dùng mode dev qua `./run.sh` (uvicorn reload). Có thể bổ sung script production sau.
-
----
-
-Bản README này đang giữ ở mức tối giản để chạy nhanh. Mình có thể bổ sung tiếp phần Docker, biến môi trường, và troubleshooting ở bước sau.

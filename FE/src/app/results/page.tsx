@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { BACKEND_URL } from "@/lib/api";
 import {
@@ -464,6 +464,26 @@ function formatSignatureText(text: string, mode: "compact" | "full" = "compact")
 }
 
 function getDisplayValue(item: ResultItem, key: string): string {
+  const repairSubjectDateTail = (text: string): string => {
+    if (!text) return text;
+    const issuedDateRaw = formatCellValue(item.issuedDate || item.issued_date);
+    let yearHint = "";
+    const m = issuedDateRaw.match(/^\s*\d{1,2}\/\d{1,2}\/(\d{4})\s*$/);
+    if (m) yearHint = m[1];
+
+    let fixed = text.replace(
+      /(ngày\s+\d{1,2}\s+tháng\s+\d{1,2})\s+nă\b(?!m)/gi,
+      "$1 năm",
+    );
+    if (yearHint) {
+      fixed = fixed.replace(
+        /(ngày\s+\d{1,2}\s+tháng\s+\d{1,2}\s+năm)\s*$/gi,
+        `$1 ${yearHint}`,
+      );
+    }
+    return fixed;
+  };
+
   if (key === "docId") {
     const stripFileExtension = (value: string): string => {
       if (!value) return "";
@@ -503,7 +523,7 @@ function getDisplayValue(item: ResultItem, key: string): string {
 
   const plainText = stripTrailingArtifacts(formatCellValue(item[key]));
   if (key === "subject" || key === "description") {
-    return formatLongVietnameseText(plainText);
+    return repairSubjectDateTail(formatLongVietnameseText(plainText));
   }
   if (key === "inforSign" || key === "autograph") {
     const signatureText = formatSignatureText(plainText, "compact");
@@ -631,6 +651,7 @@ const styles = {
     fontSize: "15px",
     color: "#64748b",
     padding: "10px",
+    textAlign: "center",
   },
   toast: {
     position: "fixed",
@@ -730,7 +751,7 @@ export default function ResultsPage() {
   }, [summaryToast]);
 
   function handleValueChange(resultIndex: number, key: string, value: string) {
-    setEditedResults((prev) => {
+    setEditedResults((prev: Record<string, string>[]) => {
       const next = [...prev];
       next[resultIndex] = {
         ...(next[resultIndex] ?? {}),
@@ -747,7 +768,7 @@ export default function ResultsPage() {
     const compactValue = item ? getDisplayValue(item, "autograph") : "";
     const fullValue = item ? getFullOcrValue(item, "autograph") : "";
 
-    setEditedResults((prev) => {
+    setEditedResults((prev: Record<string, string>[]) => {
       const next = [...prev];
       const currentRow = { ...(next[resultIndex] ?? {}) };
       const currentValue = currentRow.autograph ?? "";
@@ -764,7 +785,7 @@ export default function ResultsPage() {
       return next;
     });
 
-    setShowFullSignatureByFile((prev) => ({
+    setShowFullSignatureByFile((prev: Record<number, boolean>) => ({
       ...prev,
       [resultIndex]: nextShowFull,
     }));
@@ -785,7 +806,7 @@ export default function ResultsPage() {
       return;
     }
 
-    const exportResults = payload.results.map((item, index) => {
+    const exportResults = payload.results.map((item: ResultItem, index) => {
       const edited = editedResults[index] ?? {};
       const merged: ResultItem = { ...item };
 
@@ -949,7 +970,7 @@ export default function ResultsPage() {
                 <button
                   type="button"
                   disabled={safePage <= 1}
-                  onClick={() => setResultPage((prev) => Math.max(1, prev - 1))}
+                  onClick={() => setResultPage((prev: number) => Math.max(1, prev - 1))}
                   style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: safePage <= 1 ? "not-allowed" : "pointer" }}
                 >
                   Trước
@@ -957,7 +978,7 @@ export default function ResultsPage() {
                 <button
                   type="button"
                   disabled={safePage >= totalPages}
-                  onClick={() => setResultPage((prev) => Math.min(totalPages, prev + 1))}
+                  onClick={() => setResultPage((prev: number) => Math.min(totalPages, prev + 1))}
                   style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: safePage >= totalPages ? "not-allowed" : "pointer" }}
                 >
                   Sau
