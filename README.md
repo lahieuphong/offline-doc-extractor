@@ -1,40 +1,51 @@
-# OFFLINE_DOC_EXTRACTOR
+# Offline Doc Extractor — 22 trường metadata văn bản hành chính Việt Nam
 
-He thong trich xuat tai lieu chay offline/on-premise voi:
-- `FE` (Next.js)
-- `BE` (FastAPI)
-- `Ollama` local
+Hệ thống bóc tách 22 trường metadata từ PDF/DOCX scan, chạy hoàn toàn offline/on-premise, không dùng OpenAI API.
 
-Muc tieu trien khai: chay hoan toan noi bo, khong su dung OpenAI API.
+## Stack
 
-## Cau truc chinh
+| Service | Công nghệ |
+|---|---|
+| Frontend | Next.js |
+| Backend | FastAPI |
+| Worker | RQ (Redis Queue) |
+| Cache/Queue | Redis |
+| LLM local | Ollama (tắt mặc định) |
 
-- `FE/`: giao dien nguoi dung
-- `BE/`: API trich xuat va export
-- `deploy/`: docker-compose + script deploy offline
-- `storage/`: du lieu runtime (`uploads/`, `exports/`)
-
-## Chay bang Docker (offline stack)
+## Khởi động nhanh
 
 ```bash
 cd deploy
-cp .env.example .env
-./scripts/start.sh
+cp .env.example .env   # chỉ cần lần đầu, hoặc bỏ qua nếu .env đã có
+./scripts/start.sh     # build + khởi động 5 container
 ```
 
-Dung stack:
+Sau ~30 giây, mở `http://localhost:3000`.
 
-```bash
-cd deploy
-./scripts/stop.sh
+> Dừng: `./scripts/stop.sh`
+
+## API
+
+| Endpoint | Mô tả |
+|---|---|
+| `POST /api/extract-excel` | Upload PDF/DOCX, trả về Excel 22 trường |
+| `POST /api/extract-json` | Upload PDF/DOCX, trả về JSON |
+| `POST /api/export-excel` | Export lại từ kết quả đã có |
+| `GET /api/health` | Kiểm tra trạng thái BE |
+
+## Cấu trúc thư mục
+
+```
+BE/          FastAPI + OCR + 22-field normalizer
+FE/          Next.js UI
+deploy/      docker-compose, .env, scripts (start/stop/save/load images)
+storage/     uploads/ và exports/ (runtime, cần backup định kỳ)
 ```
 
+---
 
-## Ban V4
+## Tài liệu
 
-Ban V4 bo sung bo chuan hoa ngay ban hanh, truong trich yeu/mo ta dai, OCR vung thong minh hon va export Excel 22 truong de doc hon. Xem `PATCH_HUONG_DAN_V4.md` de biet chi tiet.
-
-
-## V5 - BE strict no-guess
-
-Bản V5 đã bổ sung chế độ `STRICT_NO_GUESS_MODE=true` mặc định cho văn bản hành chính: tắt LLM/backfill mặc định, làm sạch ký tự rác OCR, không lấy nhầm ngày căn cứ pháp lý làm ngày ban hành, và không để trống 22 trường Excel. Trường không đủ bằng chứng sẽ ghi `Không thể hiện trong văn bản` và vẫn được liệt kê trong `missing_fields` để rà soát. Xem chi tiết trong `PATCH_HUONG_DAN_V5_STRICT_NO_GUESS.md`.
+- [Patch 22 trường metadata — quy tắc bóc tách & cấu hình](PATCH_HUONG_DAN_22_METADATA_FINAL.md)
+- [Hướng dẫn test offline trên máy hiện tại](HUONG_DAN_TEST_LOCAL_OFFLINE.md)
+- [Hướng dẫn deploy sang máy target không có internet](HUONG_DAN_TEST_TARGET_OFFLINE.md)
