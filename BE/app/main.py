@@ -710,6 +710,8 @@ async def export_excel_from_json(
         raise HTTPException(status_code=400, detail="`results` must be a non-empty array.")
 
     batch_id = payload.get("batch_id") or str(uuid.uuid4())
+    job_id = payload.get("job_id", "")
+    job_result_path = JOBS_EXPORT_DIR / f"{job_id}.json" if job_id else None
     output_path = EXPORTS_DIR / f"extraction_result_{batch_id}.xlsx"
 
     export_results_to_excel(
@@ -717,11 +719,12 @@ async def export_excel_from_json(
         output_path=output_path,
     )
 
+    extra: tuple[Path, ...] = (output_path, job_result_path) if job_result_path else (output_path,)
     return FileResponse(
         path=output_path,
         filename=f"extraction_result_{batch_id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        background=BackgroundTask(_cleanup_batch, batch_id, output_path),
+        background=BackgroundTask(_cleanup_batch, batch_id, *extra),
     )
 
 

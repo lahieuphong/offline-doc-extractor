@@ -130,16 +130,16 @@ const styles = {
     zIndex: 50,
   },
   modal: {
-    width: "min(640px, 92vw)",
+    width: "min(480px, 92vw)",
     background: "#fff",
-    borderRadius: "12px",
+    borderRadius: "14px",
     border: "1px solid #d7deea",
-    padding: "18px",
+    padding: "20px",
     boxShadow: "0 18px 30px rgba(2, 6, 23, 0.18)",
   },
   modalTitle: {
-    margin: 0,
-    fontSize: "20px",
+    margin: "0 0 16px",
+    fontSize: "17px",
     color: "#0f172a",
     fontWeight: 700,
   },
@@ -152,53 +152,84 @@ const styles = {
   },
   radioGroup: {
     display: "grid",
-    gap: "10px",
-    marginBottom: "12px",
+    gap: "8px",
+    marginBottom: "16px",
   },
   radioItem: {
     display: "flex",
-    alignItems: "flex-start",
-    gap: "10px",
-    padding: "10px",
+    alignItems: "center",
+    gap: "12px",
+    padding: "12px 14px",
     borderWidth: "1px",
     borderStyle: "solid",
-    borderColor: "#d7deea",
+    borderColor: "#e2e8f0",
     borderRadius: "10px",
-    background: "#f8fafc",
+    background: "#fff",
     cursor: "pointer",
+    transition: "border-color 0.15s, background 0.15s",
   },
   radioItemActive: {
-    borderColor: "#4f76dc",
-    boxShadow: "0 0 0 1px #4f76dc inset",
-    background: "#edf3fb",
+    borderColor: "#2563eb",
+    background: "#eff6ff",
+    boxShadow: "0 0 0 1px #2563eb inset",
   },
   radioHint: {
     display: "block",
-    marginTop: "4px",
-    color: "#64748b",
-    fontSize: "13px",
+    marginTop: "2px",
+    color: "#94a3b8",
+    fontSize: "12px",
+  },
+  radioCircleWrap: {
+    flexShrink: 0,
+    width: "18px",
+    height: "18px",
+    borderRadius: "50%",
+    border: "2px solid #cbd5e1",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioCircleWrapActive: {
+    border: "2px solid #2563eb",
+    background: "#2563eb",
+  },
+  radioCircleDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "50%",
+    background: "#fff",
+  },
+  radioOptionLabel: {
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#1e293b",
+  },
+  radioOptionLabelActive: {
+    color: "#1d4ed8",
   },
   modalActions: {
     display: "flex",
     justifyContent: "flex-end",
-    gap: "10px",
+    gap: "8px",
   },
   modalBtn: {
-    border: "1px solid #cbd5e1",
+    border: "1px solid #e2e8f0",
     background: "#fff",
-    color: "#334155",
+    color: "#64748b",
     borderRadius: "8px",
-    padding: "8px 14px",
+    padding: "9px 16px",
     fontWeight: 600,
+    fontSize: "14px",
     cursor: "pointer",
   },
   modalPrimaryBtn: {
-    border: "1px solid #0b3a8e",
-    background: "#0b3a8e",
+    border: "1px solid #1d4ed8",
+    background: "#1d4ed8",
     color: "#fff",
     borderRadius: "8px",
-    padding: "8px 14px",
+    padding: "9px 18px",
     fontWeight: 700,
+    fontSize: "14px",
     cursor: "pointer",
   },
   progressPanel: {
@@ -251,15 +282,14 @@ const styles = {
     margin: "16px 0 10px",
   },
   progressCountBig: {
-    fontSize: "40px",
-    fontWeight: 800,
+    fontSize: "22px",
+    fontWeight: 700,
     color: "#2563eb",
-    lineHeight: 1,
   },
   progressCountSep: {
     fontSize: "22px",
-    fontWeight: 600,
-    color: "#94a3b8",
+    fontWeight: 700,
+    color: "#64748b",
   },
   progressCountUnit: {
     fontSize: "15px",
@@ -743,13 +773,30 @@ export default function ReviewWorkspace() {
             <div style={styles.progressDivider} />
 
             {/* File hiện tại */}
+            <style>{`
+              @keyframes progressSlide {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(400%); }
+              }
+              .progress-indeterminate {
+                height: 100%;
+                width: 30%;
+                border-radius: 999px;
+                background: linear-gradient(90deg, #2563eb, #0b3a8e);
+                animation: progressSlide 1.4s ease-in-out infinite;
+              }
+            `}</style>
             <p style={styles.progressCurrentLabel}>Đang xử lý</p>
             <p style={styles.progressCurrentName}>{progress.currentFileName}</p>
             <div style={{ ...styles.progressTrack, height: "6px", marginBottom: "6px" }}>
-              <div style={{ ...styles.progressFill, width: `${progress.currentFilePercent}%` }} />
+              {progress.currentFilePercent > 0 ? (
+                <div style={{ ...styles.progressFill, width: `${progress.currentFilePercent}%` }} />
+              ) : (
+                <div className="progress-indeterminate" />
+              )}
             </div>
             <p style={{ ...styles.progressLabel, fontSize: "12px", color: "#94a3b8" }}>
-              {progress.currentFilePercent.toFixed(0)}% · {currentFileElapsedText}
+              {progress.currentFilePercent > 0 ? `${progress.currentFilePercent.toFixed(0)}%` : "Đang xử lý..."} · {currentFileElapsedText}
             </p>
           </section>
         </div>
@@ -770,32 +817,38 @@ export default function ReviewWorkspace() {
       {showExtractModal ? (
         <div style={styles.modalBackdrop}>
           <div style={styles.modal}>
-            <h3 style={styles.modalTitle}>Chọn chế độ bóc tách PDF</h3>
-            <p style={styles.modalNote}>
-              Vui lòng chọn phạm vi đọc PDF: 1 trang đầu, 1 trang đầu và 1 trang cuối, hoặc toàn bộ tài liệu. Đối với DOCX/TXT/PNG/JPG, hệ thống vẫn xử lý như hiện tại.
-            </p>
+            <h3 style={styles.modalTitle}>Phạm vi đọc PDF</h3>
 
             <div style={styles.radioGroup}>
-              <label style={{ ...styles.radioItem, ...(pdfReadMode === "first_page" ? styles.radioItemActive : null) }} onClick={() => setPdfReadMode("first_page")}>
-                <span>
-                  Đọc 1 trang đầu (nhanh hơn)
-                  <small style={styles.radioHint}>Phù hợp khi cần lấy nhanh metadata cơ bản.</small>
-                </span>
-              </label>
-
-              <label style={{ ...styles.radioItem, ...(pdfReadMode === "first_and_last_page" ? styles.radioItemActive : null) }} onClick={() => setPdfReadMode("first_and_last_page")}>
-                <span>
-                  Đọc 1 trang đầu và 1 trang cuối
-                  <small style={styles.radioHint}>Phù hợp khi muốn lấy mở đầu và phần ký/xác nhận ở cuối tài liệu.</small>
-                </span>
-              </label>
-
-              <label style={{ ...styles.radioItem, ...(pdfReadMode === "full_pdf" ? styles.radioItemActive : null) }} onClick={() => setPdfReadMode("full_pdf")}>
-                <span>
-                  Đọc toàn bộ PDF
-                  <small style={styles.radioHint}>Đầy đủ hơn nhưng có thể mất nhiều thời gian xử lý.</small>
-                </span>
-              </label>
+              {(
+                [
+                  { value: "first_page",          label: "1 trang đầu",                hint: "Nhanh — lấy metadata cơ bản từ trang bìa." },
+                  { value: "first_and_last_page",  label: "1 trang đầu + 1 trang cuối", hint: "Cân bằng — lấy thêm thông tin ký/xác nhận ở cuối." },
+                  { value: "full_pdf",             label: "Toàn bộ PDF",                hint: "Đầy đủ nhất — xử lý lâu hơn với tài liệu nhiều trang." },
+                ] as const
+              ).map(({ value, label, hint }) => {
+                const active = pdfReadMode === value;
+                return (
+                  <div
+                    key={value}
+                    role="button"
+                    tabIndex={0}
+                    style={{ ...styles.radioItem, ...(active ? styles.radioItemActive : null) }}
+                    onClick={() => setPdfReadMode(value)}
+                    onKeyDown={(e) => e.key === "Enter" && setPdfReadMode(value)}
+                  >
+                    <div style={{ ...styles.radioCircleWrap, ...(active ? styles.radioCircleWrapActive : null) }}>
+                      {active && <div style={styles.radioCircleDot} />}
+                    </div>
+                    <span>
+                      <span style={{ ...styles.radioOptionLabel, ...(active ? styles.radioOptionLabelActive : null) }}>
+                        {label}
+                      </span>
+                      <small style={styles.radioHint}>{hint}</small>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div style={styles.modalActions}>

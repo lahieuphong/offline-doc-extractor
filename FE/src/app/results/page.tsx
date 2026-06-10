@@ -557,6 +557,16 @@ function normalizeForCompare(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function getPaginationPages(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "...")[] = [1];
+  if (current - 1 > 2) pages.push("...");
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+  if (current + 1 < total - 1) pages.push("...");
+  pages.push(total);
+  return pages;
+}
+
 const styles = {
   page: {
     height: "100vh",
@@ -564,10 +574,41 @@ const styles = {
     color: "#354052",
     display: "grid",
     gridTemplateRows: "auto 1fr auto",
-    gap: "16px",
+    gap: "8px",
     padding: "20px 16px 84px",
     overflow: "hidden",
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif',
+  },
+  paginationBar: {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "10px",
+    padding: "8px 12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    flexShrink: 0,
+  },
+  pageBtn: {
+    minWidth: "32px",
+    height: "32px",
+    border: "1px solid #e2e8f0",
+    background: "#fff",
+    color: "#475467",
+    borderRadius: "6px",
+    fontSize: "13px",
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 6px",
+  },
+  pageBtnActive: {
+    background: "#1d4ed8",
+    borderColor: "#1d4ed8",
+    color: "#fff",
   },
   title: {
     margin: 0,
@@ -675,14 +716,14 @@ const styles = {
     maxWidth: "340px",
   },
   toastItem: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
+    background: "#f0fdf4",
+    border: "1px solid #bbf7d0",
     borderRadius: "10px",
     padding: "10px 12px",
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    boxShadow: "0 2px 8px rgba(34,197,94,0.12)",
   },
   toastCheck: {
     flexShrink: 0,
@@ -700,7 +741,7 @@ const styles = {
   toastText: {
     flex: 1,
     fontSize: "13px",
-    color: "#334155",
+    color: "#166534",
     fontWeight: 500,
   },
   toastClose: {
@@ -708,7 +749,7 @@ const styles = {
     background: "none",
     border: "none",
     cursor: "pointer",
-    color: "#94a3b8",
+    color: "#4ade80",
     fontSize: "14px",
     padding: "0 2px",
     lineHeight: 1,
@@ -960,26 +1001,6 @@ export default function ResultsPage() {
                     <tr key={`${index}-${field.key}`}>
                       <td style={styles.td}>{field.label}</td>
                       <td style={styles.td}>
-                        {field.key === "autograph" && formatCellValue(item[field.key]).trim() ? (
-                          <div style={{ marginBottom: 6 }}>
-                            <button
-                              type="button"
-                              onClick={() => toggleFullSignature(index)}
-                              style={{
-                                border: "1px solid #cbd5e1",
-                                background: "#f8fafc",
-                                color: "#334155",
-                                borderRadius: 6,
-                                padding: "4px 8px",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {showFullSignatureByFile[index] ? "Ẩn OCR đầy đủ" : "Xem đầy đủ OCR"}
-                            </button>
-                          </div>
-                        ) : null}
                         <textarea
                           data-auto-grow="true"
                           value={editedResults[index]?.[field.key] ?? ""}
@@ -995,13 +1016,14 @@ export default function ResultsPage() {
                             lineHeight: 1.45,
                             fontFamily:
                               '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif',
-                            resize: "none",
+                            resize: "vertical",
                             background: "transparent",
                             color: "#1f2937",
                             whiteSpace: "pre-wrap",
                             outline: "none",
-                            overflow: "hidden",
+                            overflow: "auto",
                             minHeight: field.key === "subject" || field.key === "description" ? "132px" : "46px",
+                            maxHeight: field.key === "subject" || field.key === "description" || field.key === "keyword" ? "220px" : "120px",
                           }}
                         />
                       </td>
@@ -1012,32 +1034,33 @@ export default function ResultsPage() {
             </div>
             );
           })}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
-              <div style={{ fontSize: "13px", color: "#475467", fontWeight: 600 }}>
-                Trang {safePage}/{totalPages} - hiển thị {pagedResults.length}/{results.length} file
-              </div>
-              <div style={{ display: "inline-flex", gap: "8px" }}>
-                <button
-                  type="button"
-                  disabled={safePage <= 1}
-                  onClick={() => setResultPage((prev: number) => Math.max(1, prev - 1))}
-                  style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: safePage <= 1 ? "not-allowed" : "pointer" }}
-                >
-                  Trước
-                </button>
-                <button
-                  type="button"
-                  disabled={safePage >= totalPages}
-                  onClick={() => setResultPage((prev: number) => Math.min(totalPages, prev + 1))}
-                  style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: "6px", padding: "4px 10px", cursor: safePage >= totalPages ? "not-allowed" : "pointer" }}
-                >
-                  Sau
-                </button>
-              </div>
-            </div>
           </>
         )}
       </section>
+
+      {totalPages > 1 ? (
+        <div style={styles.paginationBar}>
+          <span style={{ fontSize: "13px", color: "#475467", fontWeight: 600, whiteSpace: "nowrap" }}>
+            {pagedResults.length}/{results.length} file
+          </span>
+          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+            {getPaginationPages(safePage, totalPages).map((p, i) =>
+              p === "..." ? (
+                <span key={`ellipsis-${i}`} style={{ padding: "0 4px", lineHeight: "32px", color: "#94a3b8", fontSize: "13px" }}>…</span>
+              ) : (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setResultPage(p)}
+                  style={{ ...styles.pageBtn, ...(safePage === p ? styles.pageBtnActive : null) }}
+                >
+                  {p}
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <SharedBottomBar
         leftLabel="Quay lại"
