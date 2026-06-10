@@ -50,11 +50,13 @@ function supportsPreview(file: File): boolean {
 }
 
 function formatElapsedVi(totalSeconds: number): string {
-  const safeSeconds = Math.max(0, totalSeconds);
-  const hours = Math.floor(safeSeconds / 3600);
-  const minutes = Math.floor((safeSeconds % 3600) / 60);
-  const seconds = safeSeconds % 60;
-  return `${hours} giờ ${String(minutes).padStart(2, "0")} phút ${String(seconds).padStart(2, "0")} giây`;
+  const s = Math.max(0, totalSeconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h} giờ ${String(m).padStart(2, "0")} phút`;
+  if (m > 0) return `${m} phút ${String(sec).padStart(2, "0")} giây`;
+  return `${sec} giây`;
 }
 
 type PdfReadMode = "first_page" | "first_and_last_page" | "full_pdf";
@@ -241,6 +243,58 @@ const styles = {
   progressLabel: {
     fontSize: "14px",
     color: "#475467",
+  },
+  progressCountRow: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "6px",
+    margin: "16px 0 10px",
+  },
+  progressCountBig: {
+    fontSize: "40px",
+    fontWeight: 800,
+    color: "#2563eb",
+    lineHeight: 1,
+  },
+  progressCountSep: {
+    fontSize: "22px",
+    fontWeight: 600,
+    color: "#94a3b8",
+  },
+  progressCountUnit: {
+    fontSize: "15px",
+    color: "#64748b",
+    flex: 1,
+  },
+  progressPercentBadge: {
+    fontSize: "22px",
+    fontWeight: 700,
+    color: "#334155",
+  },
+  progressElapsed: {
+    margin: "6px 0 0",
+    fontSize: "13px",
+    color: "#94a3b8",
+    textAlign: "right" as const,
+  },
+  progressDivider: {
+    borderTop: "1px solid #e2e8f0",
+    margin: "14px 0",
+  },
+  progressCurrentLabel: {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#94a3b8",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+    marginBottom: "4px",
+  },
+  progressCurrentName: {
+    fontSize: "13px",
+    color: "#334155",
+    fontWeight: 500,
+    wordBreak: "break-all" as const,
+    marginBottom: "8px",
   },
 } as const;
 
@@ -668,25 +722,35 @@ export default function ReviewWorkspace() {
       {progress.visible ? (
         <div style={styles.modalBackdrop}>
           <section style={styles.progressModal}>
-          <p style={styles.progressTitle}>Tiến trình bóc tách</p>
-          <p style={styles.progressMeta}>
-            Nhóm {progress.currentChunkIndex}/{progress.totalChunks} ({progress.currentChunkSize} file):{" "}
-            {progress.currentFileName}
-          </p>
-          <div style={styles.progressTrack}>
-            <div style={{ ...styles.progressFill, width: `${progress.currentFilePercent}%` }} />
-          </div>
-          <p style={styles.progressLabel}>
-            Tiến trình file hiện tại: {progress.currentFilePercent.toFixed(0)}% ({currentFileElapsedText})
-          </p>
+            {/* Tiêu đề */}
+            <p style={styles.progressTitle}>Đang bóc tách...</p>
 
-          <p style={{ ...styles.progressMeta, marginTop: 12 }}>
-            Tổng: {progress.completedFiles}/{progress.totalFiles} file ({totalPercent.toFixed(2)}%)
-          </p>
-          <div style={styles.progressTrack}>
-            <div style={{ ...styles.progressFill, width: `${totalPercent}%` }} />
-          </div>
-          <p style={styles.progressLabel}>Tiến trình tổng: {totalPercent.toFixed(2)}% ({totalElapsedText})</p>
+            {/* Số file + % */}
+            <div style={styles.progressCountRow}>
+              <span style={styles.progressCountBig}>{progress.completedFiles}</span>
+              <span style={styles.progressCountSep}>/ {progress.totalFiles}</span>
+              <span style={styles.progressCountUnit}>file hoàn thành</span>
+              <span style={styles.progressPercentBadge}>{totalPercent.toFixed(0)}%</span>
+            </div>
+
+            {/* Thanh tổng (lớn) */}
+            <div style={styles.progressTrack}>
+              <div style={{ ...styles.progressFill, width: `${totalPercent}%` }} />
+            </div>
+            <p style={styles.progressElapsed}>⏱ {totalElapsedText}</p>
+
+            {/* Divider */}
+            <div style={styles.progressDivider} />
+
+            {/* File hiện tại */}
+            <p style={styles.progressCurrentLabel}>Đang xử lý</p>
+            <p style={styles.progressCurrentName}>{progress.currentFileName}</p>
+            <div style={{ ...styles.progressTrack, height: "6px", marginBottom: "6px" }}>
+              <div style={{ ...styles.progressFill, width: `${progress.currentFilePercent}%` }} />
+            </div>
+            <p style={{ ...styles.progressLabel, fontSize: "12px", color: "#94a3b8" }}>
+              {progress.currentFilePercent.toFixed(0)}% · {currentFileElapsedText}
+            </p>
           </section>
         </div>
       ) : null}

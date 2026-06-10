@@ -43,6 +43,16 @@ const METADATA_FIELDS: Array<{ key: string; label: string }> = [
   { key: "isCan", label: "Cờ kiểm tra" },
 ];
 
+function formatElapsedVi(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h} giờ ${String(m).padStart(2, "0")} phút`;
+  if (m > 0) return `${m} phút ${String(sec).padStart(2, "0")} giây`;
+  return `${sec} giây`;
+}
+
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.join(", ");
@@ -653,18 +663,55 @@ const styles = {
     padding: "10px",
     textAlign: "center",
   },
-  toast: {
+  toastStack: {
     position: "fixed",
     right: "16px",
     top: "16px",
     zIndex: 60,
-    background: "#edf3ff",
-    color: "#2b56d4",
-    borderRadius: "999px",
-    padding: "12px 22px",
-    fontSize: "18px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minWidth: "260px",
+    maxWidth: "340px",
+  },
+  toastItem: {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "10px",
+    padding: "10px 12px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+  },
+  toastCheck: {
+    flexShrink: 0,
+    width: "20px",
+    height: "20px",
+    borderRadius: "50%",
+    background: "#22c55e",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontSize: "12px",
     fontWeight: 700,
-    boxShadow: "0 12px 24px rgba(46, 91, 255, 0.16)",
+  },
+  toastText: {
+    flex: 1,
+    fontSize: "13px",
+    color: "#334155",
+    fontWeight: 500,
+  },
+  toastClose: {
+    flexShrink: 0,
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "#94a3b8",
+    fontSize: "14px",
+    padding: "0 2px",
+    lineHeight: 1,
   },
 } as const;
 
@@ -674,7 +721,7 @@ export default function ResultsPage() {
   const [hasLoadedPayload, setHasLoadedPayload] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showFullSignatureByFile, setShowFullSignatureByFile] = useState<Record<number, boolean>>({});
-  const [summaryToast, setSummaryToast] = useState<string | null>(null);
+  const [summaryToast, setSummaryToast] = useState<{ files: string; time: string } | null>(null);
   const [resultPage, setResultPage] = useState(1);
 
   const results = useMemo(() => payload?.results ?? [], [payload]);
@@ -726,11 +773,14 @@ export default function ResultsPage() {
           const totalSec = Math.max(0, Math.ceil((summary.total_elapsed_ms ?? 0) / 1000));
           const totalFiles = summary.total_files ?? 0;
           if (!cancelled) {
-            setSummaryToast(`Đã bóc tách ${totalFiles} file. Tổng thời gian: ${totalSec}s.`);
+            setSummaryToast({
+              files: `Đã bóc tách ${totalFiles} file.`,
+              time: `Thời gian bóc tách: ${formatElapsedVi(totalSec)}.`,
+            });
           }
         } catch {
           if (!cancelled) {
-            setSummaryToast("Đã hoàn tất bóc tách.");
+            setSummaryToast({ files: "Đã hoàn tất bóc tách.", time: "" });
           }
         } finally {
           sessionStorage.removeItem("review_extraction_summary");
@@ -1000,7 +1050,22 @@ export default function ResultsPage() {
         fixedBottom
         centerContent={null}
       />
-      {summaryToast ? <div style={styles.toast}>{summaryToast}</div> : null}
+      {summaryToast ? (
+        <div style={styles.toastStack}>
+          <div style={styles.toastItem}>
+            <span style={styles.toastCheck}>✓</span>
+            <span style={styles.toastText}>{summaryToast.files}</span>
+            <button type="button" style={styles.toastClose} onClick={() => setSummaryToast(null)}>×</button>
+          </div>
+          {summaryToast.time ? (
+            <div style={styles.toastItem}>
+              <span style={styles.toastCheck}>✓</span>
+              <span style={styles.toastText}>{summaryToast.time}</span>
+              <button type="button" style={styles.toastClose} onClick={() => setSummaryToast(null)}>×</button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
