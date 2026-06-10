@@ -1,8 +1,8 @@
 # Deploy Offline / On-Premise
 
-Muc tieu: chay he thong hoan toan offline/on-premise gom `FE + BE + Ollama local`, khong su dung OpenAI API.
+Mục tiêu: chạy hệ thống hoàn toàn offline/on-premise gồm `FE + BE + Ollama local`, không sử dụng OpenAI API.
 
-## Nhanh
+## Khởi động nhanh
 
 ```bash
 cd deploy
@@ -10,25 +10,28 @@ cp .env.example .env
 ./scripts/start.sh
 ```
 
-Dung:
+Dừng:
 
 ```bash
 cd deploy
 ./scripts/stop.sh
 ```
 
-## Image backup/restore
+## Backup / Restore images
 
 ```bash
 cd deploy
-./scripts/save-images.sh
-./scripts/load-images.sh
+./scripts/save-images.sh   # lưu tất cả image ra file .tar
+./scripts/load-images.sh   # nạp lại image từ file .tar (máy target)
 ```
 
-## Async Batch API (2k-5k files)
+## Async Batch API (2.000–5.000 file)
 
-Backend ho tro luong hang doi bat dong bo qua Redis + worker:
-- `POST /api/jobs/submit` (upload file, tra ngay `job_id`)
-- `GET /api/jobs/{job_id}` (theo doi tien trinh)
-- `GET /api/jobs/{job_id}/result` (lay ket qua JSON khi xong)
-- `GET /api/jobs/{job_id}/result.xlsx` (tai file Excel ket qua)
+Backend hỗ trợ hàng đợi bất đồng bộ qua Redis + worker:
+
+| Endpoint | Mô tả |
+|---|---|
+| `POST /api/jobs/submit` | Upload file, trả ngay `job_id` |
+| `GET /api/jobs/{job_id}` | Theo dõi tiến trình |
+| `GET /api/jobs/{job_id}/result` | Lấy kết quả JSON khi xong |
+| `GET /api/jobs/{job_id}/result.xlsx` | Tải file Excel kết quả |

@@ -32,6 +32,10 @@ Sau ~30 giây, mở `http://localhost:3000`.
 | `POST /api/extract-json` | Upload PDF/DOCX, trả về JSON |
 | `POST /api/export-excel` | Export lại từ kết quả đã có |
 | `GET /api/health` | Kiểm tra trạng thái BE |
+| `POST /api/jobs/submit` | Upload file, trả ngay `job_id` (batch async) |
+| `GET /api/jobs/{job_id}` | Theo dõi tiến trình job |
+| `GET /api/jobs/{job_id}/result` | Lấy kết quả JSON khi xong |
+| `GET /api/jobs/{job_id}/result.xlsx` | Tải file Excel kết quả |
 
 ## Cấu trúc thư mục
 
