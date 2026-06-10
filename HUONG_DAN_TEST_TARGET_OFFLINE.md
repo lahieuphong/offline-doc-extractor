@@ -43,24 +43,26 @@ ollama.tar        (khoảng 1.5 GB)
 redis.tar         (khoảng 15 MB)
 ```
 
-### Bước 1.2 — Nén lại để copy
+### Bước 1.2 — Nén thành file ZIP để copy
 
 ```bash
 cd offline_doc_extractor_22fields
 
-tar czf offline_package.tar.gz deploy/ storage/
+zip -r offline_package.zip deploy/ storage/
 ```
 
-File `offline_package.tar.gz` (~2 GB) là tất cả những gì cần mang sang máy target.
+File `offline_package.zip` (~2 GB) là tất cả những gì cần mang sang máy target.
+
+> **Ghi chú:** File `.tar` bên trong không bị nén thêm nên zip sẽ nhanh, không tốn thêm dung lượng đáng kể.
 
 ---
 
 ## PHẦN 2 — Copy sang máy target
 
-Copy file `offline_package.tar.gz` sang máy target bằng:
+Copy file `offline_package.zip` sang máy target bằng:
 - USB
 - Ổ cứng ngoài
-- Mạng nội bộ (LAN/share folder)
+- Mạng nội bộ (LAN / share folder)
 
 ---
 
@@ -68,12 +70,26 @@ Copy file `offline_package.tar.gz` sang máy target bằng:
 
 > Từ bước này không cần internet nữa. Tắt WiFi cũng được.
 
-### Bước 3.1 — Giải nén
+### Bước 3.1 — Giải nén file ZIP
+
+**Trên Mac / Linux:**
 
 ```bash
-tar xzf offline_package.tar.gz
+unzip offline_package.zip
 cd offline_doc_extractor_22fields/deploy
 ```
+
+**Trên Windows:**
+
+Chuột phải vào `offline_package.zip` → **Extract All** → chọn thư mục muốn giải nén → OK.
+
+Sau đó mở Terminal (hoặc PowerShell) vào thư mục:
+
+```
+cd offline_doc_extractor_22fields\deploy
+```
+
+---
 
 Cấu trúc thư mục sau khi giải nén:
 
@@ -100,7 +116,7 @@ offline_doc_extractor_22fields/
 ./scripts/load-images.sh
 ```
 
-Script này đọc các file `.tar` và nạp vào Docker local. Không cần internet.
+Script này đọc các file `.tar` và nạp vào Docker local. **Không cần internet.**
 
 Kiểm tra đã load xong:
 
@@ -135,7 +151,7 @@ offline_doc_extractor_ollama          running
 
 ---
 
-## PHẦN 4 — Test
+## PHẦN 4 — Mở app
 
 Mở browser trên **chính máy target**:
 
@@ -143,13 +159,16 @@ Mở browser trên **chính máy target**:
 http://localhost:3000
 ```
 
-Mở browser từ **máy khác trong cùng mạng LAN** (ví dụ máy target có IP `192.168.1.100`):
+Mở browser từ **máy khác trong cùng mạng LAN**  
+(ví dụ máy target có IP `192.168.1.100`):
 
 ```
 http://192.168.1.100:3000
 ```
 
-> Lấy IP máy target: chạy `ipconfig` (Windows) hoặc `ifconfig` (Mac/Linux)
+> Lấy IP máy target:
+> - Windows: mở CMD → gõ `ipconfig` → xem **IPv4 Address**
+> - Mac/Linux: mở Terminal → gõ `ifconfig` hoặc `ip addr`
 
 ---
 
