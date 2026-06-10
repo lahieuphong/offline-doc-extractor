@@ -142,6 +142,7 @@ const styles = {
     fontSize: "17px",
     color: "#0f172a",
     fontWeight: 700,
+    textAlign: "center" as const,
   },
   modalNote: {
     marginTop: "8px",
@@ -350,7 +351,7 @@ export default function ReviewWorkspace() {
   const [loading, setLoading] = useState(false);
   const [, setMessage] = useState("Chưa xử lý file nào.");
   const [showExtractModal, setShowExtractModal] = useState(false);
-  const [pdfReadMode, setPdfReadMode] = useState<PdfReadMode>("first_page");
+  const [pdfReadMode, setPdfReadMode] = useState<PdfReadMode>("full_pdf");
   const [progress, setProgress] = useState<ProgressState>(initialProgress);
   const [timeTick, setTimeTick] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
