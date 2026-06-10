@@ -4,6 +4,12 @@
 
 ## 1. Máy Master (Máy hiện tại)
 
+### Setup Docker
+
+```bash
+docker pull redis:7-alpine && docker pull ollama/ollama:latest && docker compose up -d --pull never
+```
+
 ### Bước 1 — Rebuild (vì vừa sửa code)
 
 ```bash
@@ -68,39 +74,11 @@ Copy file `offline_package.zip` qua USB hoặc ổ cứng ngoài.
 
 ---
 
-## 3. Cách chạy trên máy Target
+## 3. Cách chạy trên máy Target (chỉ cần Docker Desktop + file ZIP)
 
-### Bước 1 — Save images (chạy lệnh này ở máy hiện tại)
+### Bước 1 — Giải nén file ZIP
 
-```bash
-cd /Users/lahieuphong/Downloads/Phong_Nho_IT/offline_doc_extractor_22fields/deploy
-
-./scripts/save-images.sh
-```
-
-Đợi xong (5–10 phút), kiểm tra:
-
-```bash
-ls -lh images/
-```
-
-> Phải thấy đủ **4 file**: `backend.tar`, `frontend.tar`, `ollama.tar`, `redis.tar`
-
-### Bước 2 — Nén ZIP
-
-```bash
-cd /Users/lahieuphong/Downloads/Phong_Nho_IT/offline_doc_extractor_22fields
-
-zip -r offline_package.zip deploy/ storage/
-```
-
-### Bước 3 — Copy sang máy target (USB / ổ cứng)
-
-Copy file `offline_package.zip` sang máy target.
-
-### Bước 4 — Trên máy TARGET: Giải nén
-
-**Windows:** Chuột phải → Extract All
+**Windows:** Chuột phải vào `offline_package.zip` → Extract All → OK
 
 **Mac/Linux:**
 
@@ -108,22 +86,74 @@ Copy file `offline_package.zip` sang máy target.
 unzip offline_package.zip
 ```
 
-### Bước 5 — Trên máy TARGET: Load images vào Docker
+### Bước 2 — Mở Terminal vào đúng thư mục
+
+**Windows (PowerShell):**
+
+```powershell
+cd offline_doc_extractor_22fields\deploy
+```
+
+**Mac/Linux:**
 
 ```bash
 cd offline_doc_extractor_22fields/deploy
+```
 
+### Bước 3 — Load images vào Docker (không cần internet)
+
+```bash
 ./scripts/load-images.sh
 ```
 
-### Bước 6 — Trên máy TARGET: Khởi động
+> Đợi 3–5 phút. Script đọc các file `.tar` và nạp vào Docker local.
+
+### Bước 4 — Khởi động app
 
 ```bash
 ./scripts/start.sh
 ```
 
-### Bước 7 — Mở browser
+> Đợi 15–30 giây.
+
+### Bước 5 — Kiểm tra
+
+```bash
+docker compose ps
+```
+
+Phải thấy **5 dòng** running:
+
+```
+offline_doc_extractor_redis      running
+offline_doc_extractor_backend    running
+offline_doc_extractor_worker     running
+offline_doc_extractor_frontend   running
+offline_doc_extractor_ollama     running
+```
+
+### Bước 6 — Mở browser
+
+**Trên chính máy target:**
 
 ```
 http://localhost:3000
 ```
+
+**Từ máy khác cùng mạng LAN:**
+
+```
+http://<IP_MÁY_TARGET>:3000
+```
+
+> Lấy IP: Windows → `ipconfig`, Mac → `ifconfig`
+
+---
+
+> **Notes:** Chỉ cần Docker + 1 lệnh:
+>
+> ```bash
+> docker compose up -d --pull never
+> ```
+>
+> Là BE, FE, Worker, Redis, Ollama tất cả tự lên hết.

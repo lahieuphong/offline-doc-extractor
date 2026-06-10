@@ -9,6 +9,7 @@ services:
       context: ../BE
       dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_backend
+    restart: unless-stopped
     env_file:
       - ./.env
     environment:
@@ -43,6 +44,7 @@ services:
       context: ../BE
       dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_worker
+    restart: unless-stopped
     env_file:
       - ./.env
     environment:
@@ -76,6 +78,7 @@ services:
       context: ../FE
       dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-offline_doc_extractor}_frontend
+    restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8000
     ports:

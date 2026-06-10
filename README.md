@@ -46,6 +46,5 @@ storage/     uploads/ và exports/ (runtime, cần backup định kỳ)
 
 ## Tài liệu
 
-- [Patch 22 trường metadata — quy tắc bóc tách & cấu hình](PATCH_HUONG_DAN_22_METADATA_FINAL.md)
-- [Hướng dẫn test offline trên máy hiện tại](HUONG_DAN_TEST_LOCAL_OFFLINE.md)
-- [Hướng dẫn deploy sang máy target không có internet](HUONG_DAN_TEST_TARGET_OFFLINE.md)
+- [22 trường metadata — quy tắc bóc tách & cấu hình](PATCH_HUONG_DAN_22_METADATA_FINAL.md)
+- [Hướng dẫn chạy lệnh — master & target](HUONG_DAN_CHAY_LENH.md)
