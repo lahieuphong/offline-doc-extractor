@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from app.excel_exporter import export_results_to_excel
 from app.extractors import extract_text
@@ -35,6 +36,18 @@ ENABLE_LLM_BACKFILL_ON_MISSING = (
 )
 LLM_BACKFILL_MIN_MISSING = max(1, int(os.getenv("LLM_BACKFILL_MIN_MISSING", "3")))
 JOBS_EXPORT_DIR = EXPORTS_DIR / "jobs"
+
+
+def _cleanup_batch(batch_id: str, *extra_paths: Path) -> None:
+    upload_dir = UPLOADS_DIR / batch_id
+    if upload_dir.exists():
+        shutil.rmtree(upload_dir, ignore_errors=True)
+    for path in extra_paths:
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 METADATA_22_KEYS = [
@@ -645,6 +658,7 @@ async def extract_excel(
         path=output_path,
         filename=f"extraction_result_{batch_id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        background=BackgroundTask(_cleanup_batch, batch_id, output_path),
     )
 
 
@@ -678,6 +692,8 @@ async def extract_json(
         pdf_read_mode=pdf_read_mode,
     )
 
+    _cleanup_batch(batch_id)
+
     return {
         "batch_id": batch_id,
         "results": results,
@@ -705,6 +721,7 @@ async def export_excel_from_json(
         path=output_path,
         filename=f"extraction_result_{batch_id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        background=BackgroundTask(_cleanup_batch, batch_id, output_path),
     )
 
 
@@ -791,6 +808,7 @@ async def get_job_result_excel(job_id: str):
     if not isinstance(results, list) or not results:
         raise HTTPException(status_code=400, detail="No extraction results in job output.")
 
+    batch_id = str(payload.get("batch_id", ""))
     output_path = EXPORTS_DIR / f"extraction_result_{job_id}.xlsx"
     export_results_to_excel(results=results, output_path=output_path)
 
@@ -798,4 +816,5 @@ async def get_job_result_excel(job_id: str):
         path=output_path,
         filename=f"extraction_result_{job_id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        background=BackgroundTask(_cleanup_batch, batch_id, output_path, result_path),
     )

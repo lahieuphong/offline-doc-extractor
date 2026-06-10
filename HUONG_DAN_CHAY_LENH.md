@@ -150,10 +150,39 @@ http://<IP_MÁY_TARGET>:3000
 
 ---
 
-> **Notes:** Chỉ cần Docker + 1 lệnh:
+> **Note 1:** Chỉ cần Docker + 1 lệnh:
 >
 > ```bash
 > docker compose up -d --pull never
 > ```
 >
 > Là BE, FE, Worker, Redis, Ollama tất cả tự lên hết.
+
+> **Note 2:** Sau khi sửa code, chỉ rebuild service bị thay đổi, không cần rebuild toàn bộ.
+>
+> ```bash
+> cd /Users/lahieuphong/Downloads/Phong_Nho_IT/offline_doc_extractor_22fields/deploy
+> ```
+>
+> **Rebuild cả BE và FE** (sửa cả hai):
+>
+> ```bash
+> docker compose build backend worker frontend && docker compose up -d
+> ```
+>
+> - `backend` + `worker` — sửa `main.py` (BE)
+> - `frontend` — sửa các file `.tsx` (FE)
+>
+> **Chỉ rebuild BE:**
+>
+> ```bash
+> docker compose build backend worker && docker compose up -d
+> ```
+>
+> **Chỉ rebuild FE:**
+>
+> ```bash
+> docker compose build frontend && docker compose up -d
+> ```
+>
+> `up -d` sẽ tự restart chỉ những container vừa được rebuild; các container còn lại (Redis, Ollama) giữ nguyên, không bị ảnh hưởng.
