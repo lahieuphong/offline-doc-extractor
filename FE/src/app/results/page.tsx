@@ -235,7 +235,8 @@ function formatLongVietnameseText(text: string): string {
       .replace(/([:;,.!?]\s*)([A-Za-zÀ-Ỹà-ỹ]\s+\d+)(?=\s|$)/g, "$1")
       // Xoa cum ngan dung le o cuoi dong.
       .replace(/\b\d+\s+[A-Za-zÀ-Ỹà-ỹ]\s*$/g, "")
-      .replace(/\b[A-Za-zÀ-Ỹà-ỹ]\s+\d+\s*$/g, "")
+      // Yêu cầu khoảng trắng trước chữ để tránh cắt giữa từ tiếng Việt như "năm 2026" → "nă"
+      .replace(/\s[A-Za-z]\s+\d+\s*$/g, " ")
       .replace(/\s{2,}/g, " ")
       .trim();
   };
