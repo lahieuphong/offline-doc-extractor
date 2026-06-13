@@ -719,12 +719,10 @@ async def export_excel_from_json(
         output_path=output_path,
     )
 
-    extra: tuple[Path, ...] = (output_path, job_result_path) if job_result_path else (output_path,)
     return FileResponse(
         path=output_path,
         filename=f"extraction_result_{batch_id}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        background=BackgroundTask(_cleanup_batch, batch_id, *extra),
     )
 
 
@@ -764,6 +762,44 @@ async def submit_extract_job(
         "status": "queued",
         "total_files": len(file_entries),
     }
+
+
+@app.get("/api/jobs")
+async def list_jobs():
+    jobs = []
+    for json_file in sorted(JOBS_EXPORT_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            job_id = data.get("job_id") or json_file.stem
+            source_filenames = [r.get("source_filename", "") for r in data.get("results", [])]
+            jobs.append({
+                "job_id": job_id,
+                "batch_id": data.get("batch_id"),
+                "total_files": data.get("total_files", 0),
+                "duration_sec": data.get("duration_sec", 0),
+                "source_filenames": source_filenames,
+                "created_at": json_file.stat().st_mtime,
+            })
+        except Exception:
+            pass
+    return jobs
+
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str):
+    result_path = JOBS_EXPORT_DIR / f"{job_id}.json"
+    if not result_path.exists():
+        raise HTTPException(status_code=404, detail="Job not found.")
+    try:
+        batch_id = json.loads(result_path.read_text(encoding="utf-8")).get("batch_id")
+    except Exception:
+        batch_id = None
+    result_path.unlink(missing_ok=True)
+    if batch_id:
+        upload_dir = UPLOADS_DIR / batch_id
+        if upload_dir.exists():
+            shutil.rmtree(upload_dir, ignore_errors=True)
+    return {"deleted": job_id}
 
 
 @app.get("/api/jobs/{job_id}")

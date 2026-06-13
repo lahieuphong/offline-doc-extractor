@@ -665,7 +665,7 @@ export default function ReviewWorkspace() {
         }
 
         const statusPayload = (await statusResponse.json()) as JobStatusResponse;
-        const totalFiles = Math.max(1, statusPayload.total_files ?? selectedFiles.length);
+        const totalFiles = Math.max(selectedFiles.length, statusPayload.total_files ?? selectedFiles.length);
         const completedFiles = Math.min(totalFiles, statusPayload.processed_files ?? 0);
         const progressPercent = Math.max(0, Math.min(100, statusPayload.progress_percent ?? 0));
         const processedEquivalent = (progressPercent / 100) * totalFiles;
