@@ -14,502 +14,510 @@ interface JobEntry {
   created_at: number;
 }
 
+type SortOption = "newest" | "oldest" | "most_files" | "least_files";
+
+const PAGE_SIZE = 12;
+const ACCENT = "#08337B";
+const ACCENT_BG = "#EEF4FF";
+const CHECK_COLOR = "#5B7FDB";
+
 function formatViDate(unixSec: number): string {
   const d = new Date(unixSec * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const day = d.getDate();
-  const month = d.getMonth() + 1;
-  const year = d.getFullYear();
-  const h = pad(d.getHours());
-  const m = pad(d.getMinutes());
-  return `${day} tháng ${month}, ${year} lúc ${h}:${m}`;
+  return `${d.getDate()} tháng ${d.getMonth() + 1}, ${d.getFullYear()} lúc ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function FolderIcon({ color = "#08337B" }: { color?: string }) {
+function formatDuration(sec: number): string {
+  const m = Math.floor(Math.max(0, sec) / 60);
+  const s = Math.round(Math.max(0, sec) % 60);
+  if (m > 0) return `${m}p ${s}s`;
+  return `${s}s`;
+}
+
+function getPaginationPages(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "...")[] = [1];
+  if (current > 3) pages.push("...");
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+  if (current < total - 2) pages.push("...");
+  pages.push(total);
+  return pages;
+}
+
+// ── Checkbox ──────────────────────────────────────────────
+function Checkbox({ checked, onChange }: { checked: boolean; onChange: (e: React.MouseEvent) => void }) {
   return (
-    <svg width="72" height="60" viewBox="0 0 72 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="12" width="72" height="48" rx="7" fill={color} fillOpacity="0.13" />
-      <rect x="0" y="12" width="72" height="48" rx="7" fill="url(#folderGrad)" />
-      <path d="M0 19C0 15.134 3.134 12 7 12H28L34 20H65C68.866 20 72 23.134 72 27V53C72 56.866 68.866 60 65 60H7C3.134 60 0 56.866 0 53V19Z" fill={color} fillOpacity="0.18" />
-      <path d="M2 21C2 17.686 4.686 15 8 15H27L33 23H64C67.314 23 70 25.686 70 29V53C70 56.314 67.314 59 64 59H8C4.686 59 2 56.314 2 53V21Z" fill={color} fillOpacity="0.85" />
-      <rect x="18" y="30" width="36" height="4" rx="2" fill="white" fillOpacity="0.55" />
-      <rect x="18" y="38" width="28" height="4" rx="2" fill="white" fillOpacity="0.4" />
-      <rect x="18" y="46" width="20" height="4" rx="2" fill="white" fillOpacity="0.28" />
-      <defs>
-        <linearGradient id="folderGrad" x1="0" y1="12" x2="72" y2="60" gradientUnits="userSpaceOnUse">
-          <stop stopColor={color} stopOpacity="0.06" />
-          <stop offset="1" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <div
+      role="checkbox"
+      aria-checked={checked}
+      onClick={onChange}
+      style={{
+        width: 16, height: 16, borderRadius: 4,
+        border: `2px solid ${checked ? CHECK_COLOR : "#CBD5E1"}`,
+        background: checked ? CHECK_COLOR : "#fff",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", flexShrink: 0,
+        transition: "border-color 0.15s, background 0.15s",
+        boxShadow: checked ? `0 0 0 2px rgba(91,127,219,0.18)` : "none",
+      } satisfies CSSProperties}
+    >
+      {checked && <img src="/icons/check.svg" width={9} height={7} alt="" draggable={false} />}
+    </div>
   );
 }
 
-function ThreeDotsIcon() {
+// ── Info Popover ──────────────────────────────────────────
+function InfoButton({ job }: { job: JobEntry }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <circle cx="9" cy="4" r="1.5" fill="#6b7280" />
-      <circle cx="9" cy="9" r="1.5" fill="#6b7280" />
-      <circle cx="9" cy="14" r="1.5" fill="#6b7280" />
-    </svg>
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 0 }}
+        title="Chi tiết"
+      >
+        <img src="/icons/info.svg" width={17} height={17} alt="info" draggable={false} />
+      </button>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute", bottom: "calc(100% + 8px)", right: 0, zIndex: 400,
+            background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.13)", padding: "12px 14px",
+            minWidth: 210, maxWidth: 270,
+          } satisfies CSSProperties}
+        >
+          <p style={{ fontSize: 11, fontWeight: 600, color: "#9CA3AF", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.07em" }}>Chi tiết</p>
+          <p style={{ fontSize: 12, color: "#374151", marginBottom: 3 }}><span style={{ color: "#9CA3AF" }}>Số file: </span>{job.total_files}</p>
+          {job.duration_sec > 0 && (
+            <p style={{ fontSize: 12, color: "#374151", marginBottom: 3 }}><span style={{ color: "#9CA3AF" }}>Thời gian: </span>{formatDuration(job.duration_sec)}</p>
+          )}
+          {job.source_filenames.length > 0 && (
+            <div style={{ marginTop: 8, borderTop: "1px solid #F3F4F6", paddingTop: 8 }}>
+              <p style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Danh sách file:</p>
+              <div style={{ maxHeight: 160, overflowY: "auto" }}>
+                {job.source_filenames.map((name, i) => (
+                  <p key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</p>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-const styles = {
-  page: {
-    height: "100vh",
-    background: "#f3f4f6",
-    color: "#0f172a",
-    paddingTop: "96px",
-    boxSizing: "border-box",
-    overflowX: "hidden",
-    overflowY: "hidden",
-  } satisfies CSSProperties,
-  header: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 48,
-    height: "96px",
-    minHeight: "96px",
-    maxHeight: "96px",
-    padding: "0 clamp(12px, 3vw, 48px)",
-    boxSizing: "border-box",
-    background: "#fff",
-    borderBottom: "1px solid rgba(33, 33, 33, 1)",
-    display: "flex",
-    alignItems: "center",
-  } satisfies CSSProperties,
-  headerInner: {
-    display: "flex",
-    alignItems: "center",
-    width: "100%",
-    minWidth: 0,
-    justifyContent: "space-between",
-  } satisfies CSSProperties,
-  logoWrap: {
-    display: "inline-flex",
-    alignItems: "center",
-    flexShrink: 0,
-  } satisfies CSSProperties,
-  logoImg: {
-    width: "clamp(110px, 12vw, 149px)",
-    height: "clamp(30px, 3.2vw, 40px)",
-    display: "block",
-    objectFit: "contain",
-  } satisfies CSSProperties,
-  avatar: {
-    width: "clamp(34px, 3vw, 40px)",
-    height: "clamp(34px, 3vw, 40px)",
-    borderRadius: "999px",
-    border: "1px solid #e5e7eb",
-    transition: "opacity 0.2s ease",
-    objectFit: "cover",
-    background: "#d1d5db",
-    flexShrink: 0,
-  } satisfies CSSProperties,
-  body: {
-    width: "calc(100% - (2 * clamp(12px, 3vw, 48px)))",
-    height: "calc(100vh - 112px)",
-    margin: "8px auto 8px",
-    background: "#f8fafc",
-    border: "1px solid #e5e7eb",
-    borderRadius: "14px",
-    boxSizing: "border-box",
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-  } satisfies CSSProperties,
-  toolbar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "20px",
-    padding: "20px 24px",
-    flexShrink: 0,
-  } satisfies CSSProperties,
-  searchWrap: {
-    width: "300px",
-    height: "34px",
-    borderRadius: "8px",
-    border: "1px solid #D9D9D9",
-    background: "#fff",
-    display: "flex",
-    alignItems: "center",
-    padding: "0 10px",
-    gap: "8px",
-  } satisfies CSSProperties,
-  searchInput: {
-    border: 0,
-    outline: "none",
-    width: "100%",
-    fontSize: "14px",
-    fontWeight: 400,
-    lineHeight: 1.4,
-    letterSpacing: "normal",
-    color: "#1f2937",
-    background: "transparent",
-  } satisfies CSSProperties,
-  actions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  } satisfies CSSProperties,
-  primaryAction: {
-    textDecoration: "none",
-    height: "34px",
-    minWidth: "auto",
-    borderRadius: "8px",
-    background: "#08337B",
-    color: "#fff",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    fontSize: "12px",
-    fontWeight: 500,
-    lineHeight: 1.4,
-    letterSpacing: "normal",
-    padding: "0 16px",
-  } satisfies CSSProperties,
-  divider: {
-    height: "1px",
-    background: "#e5e7eb",
-    flexShrink: 0,
-  } satisfies CSSProperties,
-  scrollArea: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "24px",
-  } satisfies CSSProperties,
-  sectionLabel: {
-    fontSize: "11px",
-    fontWeight: 600,
-    letterSpacing: "0.08em",
-    color: "#6b7280",
-    textTransform: "uppercase",
-    marginBottom: "16px",
-  } satisfies CSSProperties,
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))",
-    gap: "20px",
-  } satisfies CSSProperties,
-  emptyState: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: "60px",
-    gap: "12px",
-    color: "#9ca3af",
-  } satisfies CSSProperties,
-  emptyText: {
-    fontSize: "14px",
-    fontWeight: 400,
-  } satisfies CSSProperties,
-};
+// ── Card three-dot menu ───────────────────────────────────
+function CardMenu({ onExport, onDelete, exporting, deleting }: {
+  onExport: () => Promise<void>;
+  onDelete: () => Promise<void>;
+  exporting: boolean;
+  deleting: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
-function JobCard({ job, onDelete, onExport }: { job: JobEntry; onDelete: () => void; onExport: () => void }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const itemBase: CSSProperties = {
+    display: "flex", alignItems: "center", gap: 8, padding: "9px 14px",
+    fontSize: 13, fontWeight: 500, border: "none", background: "transparent",
+    width: "100%", cursor: "pointer", textAlign: "left",
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <a
+        href="#"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
+        style={{
+          width: 26, height: 26, borderRadius: "50%", border: "1px solid #D9D9D9",
+          background: "#fff", boxShadow: "0 4px 30px rgba(0,0,0,0.05)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          textDecoration: "none", flexShrink: 0,
+        } satisfies CSSProperties}
+      >
+        <img src="/icons/ellipsis.svg" width={15} height={15} alt="menu" draggable={false} />
+      </a>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 400,
+            background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.13)", minWidth: 152, overflow: "hidden",
+          } satisfies CSSProperties}
+        >
+          <button
+            style={{ ...itemBase, color: exporting ? "#9CA3AF" : "#1E293B", opacity: exporting ? 0.6 : 1 }}
+            onClick={async () => { setOpen(false); await onExport(); }}
+            disabled={exporting}
+          >
+            <img src="/icons/excel.svg" width={14} height={14} alt="" draggable={false} />
+            {exporting ? "Đang xuất..." : "Xuất Excel"}
+          </button>
+          <div style={{ height: 1, background: "#F3F4F6" }} />
+          <button
+            style={{ ...itemBase, color: deleting ? "#9CA3AF" : "#EF4444", opacity: deleting ? 0.6 : 1 }}
+            onClick={async () => { setOpen(false); await onDelete(); }}
+            disabled={deleting}
+          >
+            <img src="/icons/trash.svg" width={14} height={14} alt="" draggable={false} />
+            {deleting ? "Đang xoá..." : "Xoá"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Job Card ──────────────────────────────────────────────
+function JobCard({ job, selected, onToggle, onDelete }: {
+  job: JobEntry;
+  selected: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const title = job.total_files === 1
     ? (job.source_filenames[0]?.replace(/\.[^.]+$/, "") || "1 file")
     : `${job.total_files} files`;
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [menuOpen]);
-
-  async function handleExport() {
-    setMenuOpen(false);
+  const handleExport = async () => {
     setExporting(true);
     try {
       const res = await fetch(`${BACKEND_URL}/api/jobs/${job.job_id}/result`);
-      if (!res.ok) throw new Error("Không tải được kết quả.");
+      if (!res.ok) return;
       const payload = await res.json();
-      const exportRes = await fetch(`${BACKEND_URL}/api/export-excel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const exp = await fetch(`${BACKEND_URL}/api/export-excel`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!exportRes.ok) throw new Error("Xuất Excel thất bại.");
-      const blob = await exportRes.blob();
+      if (!exp.ok) return;
+      const blob = await exp.blob();
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `ket_qua_boc_tach_${job.job_id}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      const a = document.createElement("a");
+      a.href = url; a.download = `ket_qua_boc_tach_${job.job_id}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
-      // silent
-    } finally {
-      setExporting(false);
-    }
-  }
+    } finally { setExporting(false); }
+  };
 
-  async function handleDelete() {
-    setMenuOpen(false);
+  const handleDelete = async () => {
     setDeleting(true);
     try {
       await fetch(`${BACKEND_URL}/api/jobs/${job.job_id}`, { method: "DELETE" });
       onDelete();
-    } catch {
-      // silent
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  const cardStyle: CSSProperties = {
-    position: "relative",
-    background: "#fff",
-    borderRadius: "14px",
-    border: "1px solid #e5e7eb",
-    padding: "16px 14px 14px",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "10px",
-    cursor: "default",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-    transition: "box-shadow 0.15s",
-    opacity: deleting ? 0.4 : 1,
-  };
-
-  const menuBtnStyle: CSSProperties = {
-    position: "absolute",
-    top: "8px",
-    right: "8px",
-    width: "28px",
-    height: "28px",
-    borderRadius: "6px",
-    border: "none",
-    background: menuOpen ? "#f3f4f6" : "transparent",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    transition: "background 0.15s",
-  };
-
-  const dropdownStyle: CSSProperties = {
-    position: "absolute",
-    top: "38px",
-    right: "8px",
-    zIndex: 100,
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "10px",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-    minWidth: "148px",
-    overflow: "hidden",
-  };
-
-  const menuItemBase: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "10px 14px",
-    fontSize: "13px",
-    fontWeight: 500,
-    cursor: "pointer",
-    border: "none",
-    background: "transparent",
-    width: "100%",
-    textAlign: "left",
-  };
-
-  const titleStyle: CSSProperties = {
-    fontSize: "12px",
-    fontWeight: 600,
-    color: "#1e293b",
-    textAlign: "center",
-    lineHeight: 1.35,
-    maxWidth: "120px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  };
-
-  const dateStyle: CSSProperties = {
-    fontSize: "10px",
-    fontWeight: 400,
-    color: "#94a3b8",
-    textAlign: "center",
-    lineHeight: 1.4,
-  };
-
-  const fileCountBadge: CSSProperties = {
-    position: "absolute",
-    bottom: "6px",
-    right: "6px",
-    background: "#08337B",
-    color: "#fff",
-    fontSize: "9px",
-    fontWeight: 700,
-    borderRadius: "4px",
-    padding: "1px 5px",
-    lineHeight: 1.6,
-    display: job.total_files > 1 ? "block" : "none",
+    } finally { setDeleting(false); }
   };
 
   return (
-    <div style={cardStyle} ref={menuRef}>
-      <button
-        style={menuBtnStyle}
-        onClick={() => setMenuOpen((v) => !v)}
-        disabled={exporting || deleting}
-        title="Tùy chọn"
-      >
-        <ThreeDotsIcon />
-      </button>
-
-      {menuOpen && (
-        <div style={dropdownStyle}>
-          <button
-            style={{ ...menuItemBase, color: exporting ? "#9ca3af" : "#1e293b" }}
-            onClick={handleExport}
-            disabled={exporting}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 1v8M4 6l3 3 3-3" stroke="#08337B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M2 10v1.5A.5.5 0 0 0 2.5 12h9a.5.5 0 0 0 .5-.5V10" stroke="#08337B" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            {exporting ? "Đang xuất..." : "Xuất Excel"}
-          </button>
-          <div style={{ height: "1px", background: "#f3f4f6" }} />
-          <button
-            style={{ ...menuItemBase, color: "#ef4444" }}
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v1M5 3.5l.5 8M7 3.5v8M9 3.5l-.5 8" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {deleting ? "Đang xoá..." : "Xoá"}
-          </button>
+    <div
+      onClick={onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: selected ? ACCENT_BG : "#fff",
+        border: `${selected ? 2 : 1}px solid ${selected ? CHECK_COLOR : (hovered ? "#CBD5E1" : "#E5E7EB")}`,
+        borderRadius: 12, display: "flex", flexDirection: "column",
+        minHeight: 250, maxHeight: 250, cursor: "pointer",
+        transition: "box-shadow 0.18s ease, transform 0.18s ease, border-color 0.15s ease, background 0.15s ease",
+        opacity: deleting ? 0.45 : 1,
+        boxShadow: hovered ? "0 6px 20px rgba(0,0,0,0.10)" : "0 1px 4px rgba(0,0,0,0.05)",
+        transform: hovered ? "translateY(-2px)" : "translateY(0)",
+        userSelect: "none",
+      } satisfies CSSProperties}
+    >
+      {/* Top area */}
+      <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1 }}>
+          <Checkbox checked={selected} onChange={(e) => { e.stopPropagation(); onToggle(); }} />
         </div>
-      )}
-
-      <div style={{ position: "relative", marginTop: "4px" }}>
-        <FolderIcon color="#08337B" />
-        <span style={fileCountBadge}>{job.total_files} files</span>
+        <img src="/icons/folder.svg" alt="" width={80} draggable={false} style={{ height: "auto", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", right: 11, bottom: 8 }} onClick={(e) => e.stopPropagation()}>
+          <InfoButton job={job} />
+        </div>
       </div>
 
-      <div style={titleStyle} title={title}>{title}</div>
-      <div style={dateStyle}>{formatViDate(job.created_at)}</div>
+      <div style={{ height: 1, background: "#D9D9D9", flexShrink: 0 }} />
+
+      {/* Bottom area */}
+      <div style={{ padding: "8px 10px 10px 12px", minHeight: 70, maxHeight: 85, position: "relative", boxSizing: "border-box" } satisfies CSSProperties}>
+        <p
+          title={title}
+          style={{ fontSize: 13, fontWeight: 600, color: "#1F1F1F", marginBottom: 4, paddingRight: 34, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } satisfies CSSProperties}
+        >
+          {title}
+        </p>
+        <p style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 1.5 }}>{formatViDate(job.created_at)}</p>
+        <div style={{ position: "absolute", top: 8, right: 10 }} onClick={(e) => e.stopPropagation()}>
+          <CardMenu onExport={handleExport} onDelete={handleDelete} exporting={exporting} deleting={deleting} />
+        </div>
+      </div>
     </div>
   );
 }
 
+// ── Main ──────────────────────────────────────────────────
 export default function MediaWorkspace() {
   const [jobs, setJobs] = useState<JobEntry[]>([]);
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const loadJobs = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/jobs`);
       if (res.ok) setJobs(await res.json());
-    } catch {
-      // silent
-    }
+    } catch { /* silent */ }
   }, []);
 
   useEffect(() => { void loadJobs(); }, [loadJobs]);
+  useEffect(() => { setPage(1); }, [search, sortBy]);
 
-  const filtered = search.trim()
-    ? jobs.filter((j) =>
-        j.source_filenames.some((f) => f.toLowerCase().includes(search.toLowerCase())) ||
-        j.job_id.toLowerCase().includes(search.toLowerCase())
-      )
-    : jobs;
+  const filtered = jobs.filter((j) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return j.source_filenames.some((f) => f.toLowerCase().includes(q)) || j.job_id.toLowerCase().includes(q);
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "oldest") return a.created_at - b.created_at;
+    if (sortBy === "most_files") return b.total_files - a.total_files;
+    if (sortBy === "least_files") return a.total_files - b.total_files;
+    return b.created_at - a.created_at;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedIds = paged.map((j) => j.job_id);
+  const hasSelection = selectedIds.size > 0;
+
+  function toggleJob(id: string) {
+    setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  function selectAllPage() {
+    setSelectedIds((prev) => { const n = new Set(prev); pagedIds.forEach((id) => n.add(id)); return n; });
+  }
+
+  function deselectAll() { setSelectedIds(new Set()); }
 
   function removeJob(jobId: string) {
     setJobs((prev) => prev.filter((j) => j.job_id !== jobId));
+    setSelectedIds((prev) => { const n = new Set(prev); n.delete(jobId); return n; });
   }
 
+  async function handleBulkExport() {
+    setBulkExporting(true);
+    for (const jobId of Array.from(selectedIds)) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/jobs/${jobId}/result`);
+        if (!res.ok) continue;
+        const payload = await res.json();
+        const exp = await fetch(`${BACKEND_URL}/api/export-excel`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        });
+        if (!exp.ok) continue;
+        const blob = await exp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `ket_qua_boc_tach_${jobId}.xlsx`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+        await new Promise((r) => setTimeout(r, 200));
+      } catch { /* silent */ }
+    }
+    setBulkExporting(false);
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true);
+    await Promise.all(Array.from(selectedIds).map(async (id) => {
+      try { await fetch(`${BACKEND_URL}/api/jobs/${id}`, { method: "DELETE" }); } catch { /* silent */ }
+      removeJob(id);
+    }));
+    setSelectedIds(new Set());
+    setBulkDeleting(false);
+  }
+
+  const btnOutline: CSSProperties = {
+    height: 32, borderRadius: 7, border: "1px solid #D9D9D9", background: "#fff",
+    padding: "0 12px", fontSize: 13, fontWeight: 500, color: "#374151",
+    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+  };
+
+  const pgBtn = (active: boolean, disabled = false): CSSProperties => ({
+    width: 32, height: 32, borderRadius: 7, border: `1px solid ${active ? CHECK_COLOR : "#E5E7EB"}`,
+    background: active ? CHECK_COLOR : "#fff", color: active ? "#fff" : "#374151",
+    fontSize: 13, fontWeight: active ? 600 : 400, cursor: disabled ? "not-allowed" : "pointer",
+    display: "inline-flex", alignItems: "center", justifyContent: "center", opacity: disabled ? 0.38 : 1,
+    transition: "all 0.15s", flexShrink: 0,
+  });
+
   return (
-    <main style={styles.page}>
-      <header style={styles.header}>
-        <div style={styles.headerInner}>
-          <div style={styles.logoWrap}>
-            <img style={styles.logoImg} src="/logo.svg" alt="AutoField" />
-          </div>
-          <img style={styles.avatar} src="/default-avartar.svg" alt="Avatar" />
+    <main style={{ height: "100vh", background: "#f3f4f6", color: "#0f172a", paddingTop: 96, boxSizing: "border-box", overflowX: "hidden", overflowY: "hidden" } satisfies CSSProperties}>
+
+      {/* Fixed header */}
+      <header style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 48, height: 96, padding: "0 clamp(12px,3vw,48px)", boxSizing: "border-box", background: "#fff", borderBottom: "1px solid rgba(33,33,33,1)", display: "flex", alignItems: "center" } satisfies CSSProperties}>
+        <div style={{ display: "flex", alignItems: "center", width: "100%", justifyContent: "space-between" }}>
+          <img style={{ width: "clamp(110px,12vw,149px)", height: "clamp(30px,3.2vw,40px)", objectFit: "contain" } satisfies CSSProperties} src="/images/logo.svg" alt="AutoField" />
+          <img style={{ width: "clamp(34px,3vw,40px)", height: "clamp(34px,3vw,40px)", borderRadius: 999, border: "1px solid #e5e7eb", objectFit: "cover", background: "#d1d5db", flexShrink: 0 } satisfies CSSProperties} src="/images/default-avartar.svg" alt="Avatar" />
         </div>
       </header>
 
-      <section style={styles.body}>
-        <div style={styles.toolbar}>
-          <label style={styles.searchWrap}>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9ca3af" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-4-4" />
-            </svg>
-            <input
-              style={styles.searchInput}
-              placeholder="Tìm kiếm biểu mẫu"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+      {/* Body */}
+      <section style={{ width: "calc(100% - 2 * clamp(12px,3vw,48px))", height: "calc(100vh - 112px)", margin: "8px auto", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 14, boxSizing: "border-box", overflow: "hidden", display: "flex", flexDirection: "column" } satisfies CSSProperties}>
 
-          <div style={styles.actions}>
-            <Link href="/scanner" style={styles.primaryAction}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path d="M10 16.6765C10 17.1313 9.55228 17.5 9 17.5C8.44772 17.5 8 17.1313 8 16.6765V4.32353C8 3.86871 8.44772 3.5 9 3.5C9.55228 3.5 10 3.86871 10 4.32353V16.6765Z" fill="white" />
-                <path d="M7.68789 16.5C7.21094 16.5 6.80018 16.5001 6.46345 16.4726C6.11651 16.4442 5.77086 16.3819 5.4388 16.2128C4.94325 15.9602 4.53977 15.5567 4.28725 15.0612C4.11812 14.7291 4.0558 14.3835 4.02744 14.0365C3.99995 13.6998 4 13.2891 4 12.8121V8.18789C4 7.71078 3.99994 7.29941 4.02744 6.9626C4.0558 6.61568 4.11814 6.26998 4.28725 5.93794C4.53973 5.4425 4.94338 5.03977 5.4388 4.78725C5.77088 4.61808 6.11649 4.55495 6.46345 4.52658C6.80017 4.4991 7.21096 4.5 7.68789 4.5H9.8538V6.25606H7.68789C7.18188 6.25606 6.8545 6.25717 6.60579 6.27749C6.36777 6.29699 6.27874 6.32999 6.23537 6.35209C6.07055 6.43628 5.93614 6.57046 5.85209 6.73537C5.82997 6.7789 5.79693 6.86793 5.77749 7.10579C5.75719 7.35453 5.75606 7.68187 5.75606 8.18789V12.8121C5.75606 13.3181 5.75717 13.6455 5.77749 13.8942C5.79699 14.1323 5.82999 14.2213 5.85209 14.2646C5.93621 14.4295 6.0705 14.5638 6.23537 14.6479C6.27875 14.67 6.36772 14.703 6.60579 14.7225C6.8545 14.7428 7.18188 14.7439 7.68789 14.7439H9.8538V16.5H7.68789ZM16 12.8121C16 13.289 16.0009 13.6998 15.9734 14.0366C15.945 14.3835 15.8819 14.7291 15.7128 15.0612C15.4602 15.5566 15.0575 15.9603 14.5621 16.2128C14.23 16.3819 13.8843 16.4442 13.5374 16.4726C13.2006 16.5001 12.7892 16.5 12.3121 16.5H11.6099V14.7439H12.3121C12.8181 14.7439 13.1455 14.7428 13.3942 14.7225C13.6321 14.7031 13.7211 14.67 13.7646 14.6479C13.9295 14.5639 14.0637 14.4295 14.1479 14.2646C14.17 14.2213 14.203 14.1322 14.2225 13.8942C14.2428 13.6455 14.2439 13.3181 14.2439 12.8121V8.18789C14.2439 7.68184 14.2428 7.35454 14.2225 7.10579C14.203 6.86753 14.17 6.77882 14.1479 6.73537C14.0638 6.57033 13.9297 6.43624 13.7646 6.35209C13.7212 6.32998 13.6325 6.29697 13.3942 6.2775C13.1455 6.25719 12.8182 6.25606 12.3121 6.25606H11.6099V4.5H12.3121C12.7892 4.5 13.2006 4.49908 13.5374 4.52658C13.8844 4.55495 14.2299 4.61805 14.5621 4.78725C15.0575 5.03975 15.4603 5.44254 15.7128 5.93795C15.882 6.27007 15.945 6.61559 15.9734 6.9626C16.0009 7.29942 16 7.71076 16 8.18789V12.8121Z" fill="white" />
-                <path d="M13.5 0L13.9052 1.09487L15 1.5L13.9052 1.90514L13.5 3L13.0949 1.90514L12 1.5L13.0949 1.09487L13.5 0Z" fill="white" />
-                <path d="M17.5 3L17.9052 4.09486L19 4.5L17.9052 4.90514L17.5 6L17.0949 4.90514L16 4.5L17.0949 4.09486L17.5 3Z" fill="white" />
-                <path d="M17 0L17.27 0.7299L18 1L17.27 1.2701L17 2L16.7298 1.2701L16 1L16.7298 0.7299L17 0Z" fill="white" />
-              </svg>
-              Scan AI
-            </Link>
+        {/* Top bar: "Gần đây" title + Scan AI */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 24px", flexShrink: 0 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", margin: 0 }}>Gần đây</h2>
+          <Link
+            href="/scanner"
+            style={{ textDecoration: "none", height: 34, borderRadius: 8, background: ACCENT, color: "#fff", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 500, padding: "0 16px", flexShrink: 0 } satisfies CSSProperties}
+          >
+            <img src="/icons/scan-ai.svg" width={20} height={20} alt="" draggable={false} />
+            Scan AI
+          </Link>
+        </div>
+
+        <div style={{ height: 1, background: "#E5E7EB", flexShrink: 0 }} />
+
+        {/* Secondary bar: Search + Sort + Filter + Select actions */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 24px", flexShrink: 0, gap: 10, flexWrap: "wrap" }}>
+          {/* Left: search + sort + filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <label style={{ height: 32, minWidth: 220, flex: "1 1 220px", maxWidth: 340, borderRadius: 7, border: "1px solid #D9D9D9", background: "#fff", display: "flex", alignItems: "center", padding: "0 10px", gap: 7 } satisfies CSSProperties}>
+              <img src="/icons/search.svg" width={15} height={15} alt="" draggable={false} />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tìm kiếm..."
+                style={{ border: 0, outline: "none", width: "100%", fontSize: 13, color: "#1f2937", background: "transparent" }}
+              />
+            </label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              style={{ height: 32, border: "1px solid #D9D9D9", borderRadius: 7, background: "#fff", padding: "0 8px", fontSize: 13, color: "#374151", outline: "none", cursor: "pointer", minWidth: 138 }}
+            >
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+              <option value="most_files">Nhiều file nhất</option>
+              <option value="least_files">Ít file nhất</option>
+            </select>
+            <button style={btnOutline}>
+              <img src="/icons/filter.svg" width={14} height={14} alt="" draggable={false} />
+              Bộ lọc
+            </button>
+          </div>
+
+          {/* Right: selection actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {hasSelection ? (
+              <>
+                <span style={{ fontSize: 13, color: "#6B7280", whiteSpace: "nowrap" }}>Đã chọn: <strong>{selectedIds.size}</strong></span>
+                <button onClick={deselectAll} style={btnOutline}>Bỏ chọn</button>
+                <button
+                  onClick={handleBulkExport}
+                  disabled={bulkExporting}
+                  style={{ ...btnOutline, color: bulkExporting ? "#9CA3AF" : ACCENT, border: `1px solid ${ACCENT}`, opacity: bulkExporting ? 0.6 : 1 }}
+                >
+                  <img src="/icons/download.svg" width={13} height={13} alt="" draggable={false} />
+                  {bulkExporting ? "Đang tải..." : "Tải xuống"}
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  style={{ ...btnOutline, color: bulkDeleting ? "#9CA3AF" : "#EF4444", border: "1px solid #FECACA", opacity: bulkDeleting ? 0.6 : 1 }}
+                >
+                  <img src="/icons/trash.svg" width={13} height={13} alt="" draggable={false} />
+                  {bulkDeleting ? "Đang xoá..." : "Xoá"}
+                </button>
+              </>
+            ) : (
+              <button onClick={selectAllPage} disabled={paged.length === 0} style={{ ...btnOutline, opacity: paged.length === 0 ? 0.4 : 1 }}>
+                Chọn tất cả
+              </button>
+            )}
           </div>
         </div>
 
-        <div style={styles.divider} />
+        <div style={{ height: 1, background: "#E5E7EB", flexShrink: 0 }} />
 
-        <div style={styles.scrollArea}>
-          {filtered.length === 0 ? (
-            <div style={styles.emptyState}>
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                <rect x="4" y="14" width="40" height="30" rx="5" fill="#e5e7eb" />
-                <path d="M4 20C4 16.686 6.686 14 10 14H20L26 22H38C41.314 22 44 24.686 44 28V39C44 42.314 41.314 45 38 45H10C6.686 45 4 42.314 4 39V20Z" fill="#d1d5db" />
-              </svg>
-              <span style={styles.emptyText}>
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px 16px" }}>
+          {sorted.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 52, gap: 12, color: "#9CA3AF" }}>
+              <img src="/icons/folder.svg" width={64} alt="" draggable={false} style={{ opacity: 0.35 }} />
+              <span style={{ fontSize: 14 }}>
                 {search ? "Không tìm thấy kết quả phù hợp." : "Chưa có phiên bóc tách nào."}
               </span>
             </div>
           ) : (
-            <>
-              <div style={styles.sectionLabel}>Gần đây</div>
-              <div style={styles.grid}>
-                {filtered.map((job) => (
-                  <JobCard
-                    key={job.job_id}
-                    job={job}
-                    onDelete={() => removeJob(job.job_id)}
-                    onExport={() => {}}
-                  />
-                ))}
-              </div>
-            </>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(185px, 1fr))", gap: 16 }}>
+              {paged.map((job) => (
+                <JobCard
+                  key={job.job_id}
+                  job={job}
+                  selected={selectedIds.has(job.job_id)}
+                  onToggle={() => toggleJob(job.job_id)}
+                  onDelete={() => removeJob(job.job_id)}
+                />
+              ))}
+            </div>
           )}
+        </div>
+
+        {/* Pagination — always visible */}
+        <div style={{ flexShrink: 0, borderTop: "1px solid #E5E7EB", padding: "10px 24px", display: "flex", justifyContent: "center", alignItems: "center", gap: 6, background: "#f8fafc" }}>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            style={{ ...pgBtn(false, safePage === 1), width: "auto", padding: "0 12px" }}
+          >
+            ← Trước
+          </button>
+          {getPaginationPages(safePage, totalPages).map((p, i) =>
+            p === "..." ? (
+              <span key={`e${i}`} style={{ width: 32, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>…</span>
+            ) : (
+              <button key={p} onClick={() => setPage(p as number)} style={pgBtn(p === safePage)}>
+                {p}
+              </button>
+            )
+          )}
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            style={{ ...pgBtn(false, safePage === totalPages), width: "auto", padding: "0 12px" }}
+          >
+            Sau →
+          </button>
         </div>
       </section>
     </main>
