@@ -288,19 +288,73 @@ for _profile in PROFILE_BY_STEM.values():
 
 DOC_TYPE_HEADINGS = {
     "THONG BAO": "Thông báo",
+    "THONG TU LIEN TICH": "Thông tư liên tịch",
     "THONG TU": "Thông tư",
     "QUYET DINH": "Quyết định",
     "NGHI DINH": "Nghị định",
     "NGHI QUYET": "Nghị quyết",
     "CHI THI": "Chỉ thị",
     "CONG VAN": "Công văn",
+    "TO TRINH": "Tờ trình",
+    "BAO CAO": "Báo cáo",
+    "KE HOACH": "Kế hoạch",
+    "BIEN BAN": "Biên bản",
+    "CHUONG TRINH": "Chương trình",
+    "HUONG DAN": "Hướng dẫn",
 }
 
+# Maps notation suffix (no-accent uppercase) to the issuing organ name.
+# Used by _organ_from_notation_and_header() when notation encodes the agency.
+_ORGAN_SUFFIX_MAP: Dict[str, str] = {
+    "BTC": "Bộ Tài chính",
+    "BYT": "Bộ Y tế",
+    "BGDDT": "Bộ Giáo dục và Đào tạo",    # BGDĐT after accent removal
+    "BGTVT": "Bộ Giao thông vận tải",
+    "BKHCN": "Bộ Khoa học và Công nghệ",
+    "BTNMT": "Bộ Tài nguyên và Môi trường",
+    "BLDTBXH": "Bộ Lao động - Thương binh và Xã hội",
+    "BXD": "Bộ Xây dựng",
+    "BTTTT": "Bộ Thông tin và Truyền thông",
+    "BVHTTDL": "Bộ Văn hóa, Thể thao và Du lịch",
+    "BQP": "Bộ Quốc phòng",
+    "BCA": "Bộ Công an",
+    "BNG": "Bộ Ngoại giao",
+    "BNV": "Bộ Nội vụ",
+    "BTP": "Bộ Tư pháp",
+    "BNNMT": "Bộ Nông nghiệp và Môi trường",
+    "NHNN": "Ngân hàng Nhà nước Việt Nam",
+    "BHXHVN": "Bảo hiểm xã hội Việt Nam",
+    "KTNN": "Kiểm toán Nhà nước",
+}
+
+# first_norm passed to these patterns is already _upper_no_accent() — no-accent uppercase.
+# More specific patterns must come before broader ones (e.g. "BO LAO DONG THUONG BINH"
+# before plain "BO" catches to avoid short-circuit mismatches).
 ORGAN_PATTERNS = [
-    (r"\bBO\s+CONG\s+THUONG\b|\bBỘ\s+CÔNG\s+THƯƠNG\b", "Bộ Công Thương"),
-    (r"\bVAN\s+PHONG\s+CHINH\s+PHU\b|\bVĂN\s+PHÒNG\s+CHÍNH\s+PHỦ\b", "Văn phòng Chính phủ"),
-    (r"\bTHU\s+TUONG\s+CHINH\s+PHU\b|\bTHỦ\s+TƯỚNG\s+CHÍNH\s+PHỦ\b", "Thủ tướng Chính phủ"),
-    (r"\bCHINH\s+PHU\b|\bCHÍNH\s+PHỦ\b", "Chính phủ"),
+    (r"\bBO\s+LAO\s+DONG\s+THUONG\s+BINH\b", "Bộ Lao động - Thương binh và Xã hội"),
+    (r"\bBO\s+NONG\s+NGHIEP\b", "Bộ Nông nghiệp và Môi trường"),
+    (r"\bBO\s+KE\s+HOACH\b", "Bộ Kế hoạch và Đầu tư"),
+    (r"\bBO\s+TAI\s+NGUYEN\b", "Bộ Tài nguyên và Môi trường"),
+    (r"\bBO\s+KHOA\s+HOC\b", "Bộ Khoa học và Công nghệ"),
+    (r"\bBO\s+GIAO\s+THONG\b", "Bộ Giao thông vận tải"),
+    (r"\bBO\s+GIAO\s+DUC\b", "Bộ Giáo dục và Đào tạo"),
+    (r"\bBO\s+THONG\s+TIN\b", "Bộ Thông tin và Truyền thông"),
+    (r"\bBO\s+VAN\s+HOA\b", "Bộ Văn hóa, Thể thao và Du lịch"),
+    (r"\bBO\s+CONG\s+THUONG\b", "Bộ Công Thương"),
+    (r"\bBO\s+CONG\s+AN\b", "Bộ Công an"),
+    (r"\bBO\s+QUOC\s+PHONG\b", "Bộ Quốc phòng"),
+    (r"\bBO\s+NGOAI\s+GIAO\b", "Bộ Ngoại giao"),
+    (r"\bBO\s+NOI\s+VU\b", "Bộ Nội vụ"),
+    (r"\bBO\s+TU\s+PHAP\b", "Bộ Tư pháp"),
+    (r"\bBO\s+TAI\s+CHINH\b", "Bộ Tài chính"),
+    (r"\bBO\s+XAY\s+DUNG\b", "Bộ Xây dựng"),
+    (r"\bBO\s+Y\s+TE\b", "Bộ Y tế"),
+    (r"\bNGAN\s+HANG\s+NHA\s+NUOC\b", "Ngân hàng Nhà nước Việt Nam"),
+    (r"\bBAO\s+HIEM\s+XA\s+HOI\b", "Bảo hiểm xã hội Việt Nam"),
+    (r"\bKIEM\s+TOAN\s+NHA\s+NUOC\b", "Kiểm toán Nhà nước"),
+    (r"\bVAN\s+PHONG\s+CHINH\s+PHU\b", "Văn phòng Chính phủ"),
+    (r"\bTHU\s+TUONG\s+CHINH\s+PHU\b", "Thủ tướng Chính phủ"),
+    (r"\bCHINH\s+PHU\b", "Chính phủ"),
 ]
 
 KNOWN_SIGNERS = {
@@ -700,17 +754,23 @@ def _extract_document_code(text: str, source_filename: Optional[str], existing_d
 
 def _doc_type_from_notation(notation: Optional[str], text: str) -> Optional[str]:
     up = _upper_no_accent(notation or "")
-    if "TB" in up and "VPCP" in up:
+    # Thông báo: prefix TB in notation (TB-VPCP, TB-BTC, TB-UBND …)
+    if re.search(r"(?:^|[/\-])TB(?=[/\-]|$)", up):
         return "Thông báo"
+    # Tờ trình: prefix TTr (no-accent: TTR)
+    if re.search(r"(?:^|[/\-])TTR(?=[/\-]|$)", up):
+        return "Tờ trình"
     if "QD" in up or "QĐ" in (notation or ""):
         return "Quyết định"
     if "NQ" in up:
         return "Nghị quyết"
     if "ND" in up or "NĐ" in (notation or ""):
         return "Nghị định"
-    if re.search(r"(^|/)\d{4}/TT", up) or "TT-BCT" in up:
+    # Thông tư: year-prefixed (2026/TT-BCT) or plain prefix TT (TT-BGDĐT, TT-BYT …)
+    if re.search(r"(?:^|/)\d{4}/TT", up) or re.search(r"(?:^|[/\-])TT(?=[/\-]|$)", up):
         return "Thông tư"
-    if "VPCP" in up or "TTG-CDS" in up or "TTG-CĐS" in (notation or ""):
+    # Công văn: CV prefix from any agency, or the VPCP/TTg-CĐS channels
+    if re.search(r"(?:^|[/\-])CV(?=[/\-]|$)", up) or "VPCP" in up or "TTG-CDS" in up or "TTG-CĐS" in (notation or ""):
         return "Công văn"
     for line in _all_lines(_first_page_text(text))[:80]:
         normalized = re.sub(r"[^A-Z ]", " ", _upper_no_accent(line))
@@ -728,6 +788,10 @@ def _organ_from_notation_and_header(notation: Optional[str], text: str) -> Optio
         return "Thủ tướng Chính phủ"
     if "BCT" in up:
         return "Bộ Công Thương"
+    # Check notation suffix for ministry/agency abbreviations (e.g. TT-BYT → Bộ Y tế)
+    for suffix, organ in _ORGAN_SUFFIX_MAP.items():
+        if re.search(rf"(?:^|[/\-]){re.escape(suffix)}(?:[/\-]|$)", up):
+            return organ
     if "CP" in up:
         return "Chính phủ"
     first_norm = _upper_no_accent("\n".join(_all_lines(_first_page_text(text))[:35]))
