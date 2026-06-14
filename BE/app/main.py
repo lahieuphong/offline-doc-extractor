@@ -22,7 +22,12 @@ from app.rule_based import extract_by_rules
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-STORAGE_DIR = BASE_DIR / "storage"
+_storage_env = os.getenv("STORAGE_DIR")
+if _storage_env:
+    _storage_path = Path(_storage_env)
+    STORAGE_DIR = _storage_path if _storage_path.is_absolute() else BASE_DIR / _storage_path
+else:
+    STORAGE_DIR = BASE_DIR.parent / "storage"
 UPLOADS_DIR = STORAGE_DIR / "uploads"
 EXPORTS_DIR = STORAGE_DIR / "exports"
 MAX_WORKERS = max(1, int(os.getenv("EXTRACT_MAX_WORKERS", "1")))
