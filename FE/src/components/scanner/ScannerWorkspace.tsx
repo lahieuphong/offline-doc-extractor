@@ -31,6 +31,7 @@ const styles = {
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
     display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
   },
   backBtn: {
     border: 0,
@@ -565,6 +566,8 @@ export default function ScannerWorkspace() {
           </svg>
           <span>Quay lại</span>
         </button>
+        <h1 style={{ margin: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "#374151" }}>Scan Giấy tờ / Tài liệu</h1>
+        <div style={{ width: 44 }} />
       </header>
 
       <SharedBottomBar

@@ -574,73 +574,59 @@ const styles = {
     background: "#f3f4f6",
     color: "#354052",
     display: "grid",
-    gridTemplateRows: "auto 1fr auto",
-    gap: "8px",
-    padding: "20px 16px 84px",
+    gridTemplateRows: "auto 1fr",
+    gap: "0",
+    padding: "0 16px 84px",
     overflow: "hidden",
+    boxSizing: "border-box" as const,
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif',
   },
   paginationBar: {
     background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: "10px",
+    borderTop: "1px solid #e2e8f0",
+    borderRadius: 0,
     padding: "8px 12px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: "8px",
+    justifyContent: "flex-end",
+    gap: "4px",
     flexShrink: 0,
   },
   pageBtn: {
-    minWidth: "32px",
+    width: "32px",
     height: "32px",
-    border: "1px solid #e2e8f0",
-    background: "#fff",
-    color: "#475467",
+    border: "none",
+    background: "transparent",
+    color: "#374151",
     borderRadius: "6px",
     fontSize: "13px",
-    fontWeight: 600,
+    fontWeight: 400,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "0 6px",
+    padding: "0",
+    flexShrink: 0,
   },
   pageBtnActive: {
-    background: "#1d4ed8",
-    borderColor: "#1d4ed8",
+    background: "#08337B",
     color: "#fff",
+    fontWeight: 600,
   },
-  title: {
-    margin: 0,
-    fontSize: "28px",
-    fontWeight: 700,
-    color: "#1f2937",
+  pageBtnIcon: {
+    padding: "8px",
+    border: "none",
     background: "transparent",
-    borderRadius: 0,
-    padding: "12px 16px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "10px",
-    textAlign: "center",
-  },
-  titlePath: {
-    fontSize: "15px",
-    fontWeight: 500,
-    opacity: 0.8,
-  },
-  pathIcon: {
-    width: "24px",
-    height: "24px",
+    borderRadius: "6px",
+    cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#111827",
+    flexShrink: 0,
   },
   panel: {
     background: "#ffffff",
-    borderRadius: "12px",
+    borderRadius: 0,
     border: "1px solid #e2e8f0",
     padding: "12px",
     overflowY: "auto",
@@ -705,6 +691,76 @@ const styles = {
     padding: "10px",
     textAlign: "center",
   },
+  outlineWrapper: {
+    display: "flex",
+    minHeight: 0,
+    overflow: "hidden",
+    border: "1px solid #e2e8f0",
+    background: "#fff",
+  },
+  outlinePanel: {
+    width: 220,
+    background: "#fafbfc",
+    borderRight: "1px solid #e2e8f0",
+    display: "flex",
+    flexDirection: "column" as const,
+    flexShrink: 0,
+    overflow: "hidden",
+  },
+  outlineHeader: {
+    height: 48,
+    padding: "0 12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottom: "1px solid #f1f5f9",
+    flexShrink: 0,
+    boxSizing: "border-box" as const,
+  },
+  outlineList: {
+    overflowY: "auto" as const,
+    flex: 1,
+    padding: "4px 0",
+  },
+  outlineItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "7px 12px",
+    width: "100%",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left" as const,
+    transition: "background 0.12s",
+  },
+  outlineItemActive: {
+    background: "#EEF4FF",
+  },
+  outlineBadge: {
+    flexShrink: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    background: "#08337B",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 700,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  outlineBadgeInactive: {
+    background: "#e2e8f0",
+    color: "#94a3b8",
+  },
+  mainPanel: {
+    flex: 1,
+    overflowY: "auto" as const,
+    overflowX: "hidden",
+    padding: "12px",
+    minHeight: 0,
+  },
   toastStack: {
     position: "fixed",
     right: "16px",
@@ -765,6 +821,8 @@ export default function ResultsPage() {
   const [showFullSignatureByFile, setShowFullSignatureByFile] = useState<Record<number, boolean>>({});
   const [summaryToast, setSummaryToast] = useState<{ files: string; time: string } | null>(null);
   const [resultPage, setResultPage] = useState(1);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [jumpToIndex, setJumpToIndex] = useState<number | null>(null);
 
   const results = useMemo(() => payload?.results ?? [], [payload]);
   const [editedResults, setEditedResults] = useState<Record<string, string>[]>([]);
@@ -893,6 +951,23 @@ export default function ResultsPage() {
     elements.forEach((element) => autoResizeTextArea(element as HTMLTextAreaElement));
   }, [editedResults.length, JSON.stringify(showFullSignatureByFile), safePage]);
 
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (jumpToIndex === null) return;
+    const el = document.getElementById(`result-file-${jumpToIndex}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setJumpToIndex(null);
+    }
+  }, [safePage, jumpToIndex]);
+
   async function handleExportExcel() {
     if (!payload?.results || payload.results.length === 0) {
       return;
@@ -949,20 +1024,77 @@ export default function ResultsPage() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>
-        <span aria-hidden="true" style={styles.pathIcon}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 24, height: 24 }}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
-            />
+      <header style={{ margin: "0 -16px", padding: "12px 16px", background: "#fff", borderBottom: "1px solid #DDE2EB", boxShadow: "0 1px 2px rgba(15,23,42,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          type="button"
+          onClick={() => router.push("/media")}
+          style={{ border: 0, background: "transparent", color: "#4B5563", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, fontWeight: 600, lineHeight: 1, padding: 0 }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: 20, height: 20 }}>
+            <path d="m12 19-7-7 7-7" />
+            <path d="M19 12H5" />
           </svg>
-        </span>
-        <span>Kết quả bóc tách (22 trường metadata)</span>
-      </h1>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Quay lại</span>
+        </button>
+        <h1 style={{ margin: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "#374151" }}>Kết quả bóc tách (22 trường metadata)</h1>
+        <div style={{ width: 44 }} />
+      </header>
 
-      <section style={styles.panel}>
+      <div style={styles.outlineWrapper}>
+        {/* Sidebar outline */}
+        <aside style={{ ...styles.outlinePanel, width: sidebarOpen ? 220 : 48, transition: "width 0.2s ease" }}>
+          {/* Header */}
+          <div style={{ ...styles.outlineHeader, justifyContent: sidebarOpen ? "space-between" : "center", padding: sidebarOpen ? "10px 12px 8px" : "10px 0 8px" }}>
+            {sidebarOpen && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.07em", textTransform: "uppercase" as const }}>Danh sách tệp</span>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {sidebarOpen && (
+                <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 600, background: "#f1f5f9", borderRadius: 4, padding: "1px 5px" }}>{results.length}</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((v) => !v)}
+                aria-label={sidebarOpen ? "Thu gọn" : "Mở danh sách"}
+                style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", borderRadius: 4 }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14, transform: sidebarOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }}>
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          {/* List */}
+          <div style={styles.outlineList}>
+            {results.map((item, idx) => {
+              const filename = formatCellValue(item.source_filename) || `File ${idx + 1}`;
+              const shortName = filename.replace(/\.[^/.]+$/, "");
+              const isActive = idx >= pageStartIndex && idx < pageStartIndex + RESULT_PAGE_SIZE;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    const targetPage = Math.ceil((idx + 1) / RESULT_PAGE_SIZE);
+                    setResultPage(targetPage);
+                    setJumpToIndex(idx);
+                  }}
+                  style={{ ...styles.outlineItem, justifyContent: sidebarOpen ? "flex-start" : "center", padding: sidebarOpen ? "7px 12px" : "7px 0", ...(isActive ? styles.outlineItemActive : {}) }}
+                  title={shortName}
+                >
+                  <span style={{ ...styles.outlineBadge, ...(isActive ? {} : styles.outlineBadgeInactive), flexShrink: 0 }}>{idx + 1}</span>
+                  {sidebarOpen && (
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, fontSize: 12, color: isActive ? "#08337B" : "#475467", fontWeight: isActive ? 600 : 400 }}>{shortName}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Main panel + pagination */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+        <section style={styles.mainPanel}>
         {!hasLoadedPayload ? (
           <div style={styles.noData}>Đang tải dữ liệu kết quả...</div>
         ) : results.length === 0 ? (
@@ -972,9 +1104,9 @@ export default function ResultsPage() {
           {pagedResults.map((item, pageIndex) => {
             const index = pageStartIndex + pageIndex;
             return (
-            <div key={`result-${index}`} style={{ marginBottom: pageIndex === pagedResults.length - 1 ? 0 : 16 }}>
+            <div key={`result-${index}`} id={`result-file-${index}`} style={{ marginBottom: pageIndex === pagedResults.length - 1 ? 0 : 16 }}>
               <p style={styles.fileTitle}>
-                <span aria-hidden="true" style={{ ...styles.pathIcon, color: "#ffffff" }}>
+                <span aria-hidden="true" style={{ width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#ffffff" }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 24, height: 24 }}>
                     <path
                       strokeLinecap="round"
@@ -1037,31 +1169,45 @@ export default function ResultsPage() {
           })}
           </>
         )}
-      </section>
-
-      {totalPages > 1 ? (
+        </section>
         <div style={styles.paginationBar}>
-          <span style={{ fontSize: "13px", color: "#475467", fontWeight: 600, whiteSpace: "nowrap" }}>
-            {pagedResults.length}/{results.length} file
-          </span>
-          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-            {getPaginationPages(safePage, totalPages).map((p, i) =>
-              p === "..." ? (
-                <span key={`ellipsis-${i}`} style={{ padding: "0 4px", lineHeight: "32px", color: "#94a3b8", fontSize: "13px" }}>…</span>
-              ) : (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setResultPage(p)}
-                  style={{ ...styles.pageBtn, ...(safePage === p ? styles.pageBtnActive : null) }}
-                >
-                  {p}
-                </button>
-              )
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setResultPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            aria-label="Trang trước"
+            style={{ ...styles.pageBtnIcon, opacity: safePage === 1 ? 0.5 : 1, cursor: safePage === 1 ? "not-allowed" : "pointer" }}
+          >
+            <img src="/icons/chevron-left.svg" width={20} height={20} alt="" draggable={false} />
+          </button>
+          {getPaginationPages(safePage, totalPages).map((p, i) =>
+            p === "..." ? (
+              <span key={`ellipsis-${i}`} style={{ width: 32, textAlign: "center", lineHeight: "32px", color: "#9CA3AF", fontSize: "13px" }}>…</span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setResultPage(p)}
+                aria-label={`Trang ${p}`}
+                aria-current={safePage === p ? "page" : undefined}
+                style={{ ...styles.pageBtn, ...(safePage === p ? styles.pageBtnActive : null) }}
+              >
+                {p}
+              </button>
+            )
+          )}
+          <button
+            type="button"
+            onClick={() => setResultPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            aria-label="Trang sau"
+            style={{ ...styles.pageBtnIcon, opacity: safePage === totalPages ? 0.5 : 1, cursor: safePage === totalPages ? "not-allowed" : "pointer" }}
+          >
+            <img src="/icons/chevron-right.svg" width={20} height={20} alt="" draggable={false} />
+          </button>
         </div>
-      ) : null}
+        </div>
+      </div>
 
       <SharedBottomBar
         leftLabel="Quay lại"

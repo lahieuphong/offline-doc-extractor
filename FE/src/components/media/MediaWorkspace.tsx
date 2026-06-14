@@ -164,6 +164,64 @@ function HoverBtn({ style, hoverStyle, disabled, children, ...rest }: React.Butt
   );
 }
 
+// ── Confirm Delete Modal ──────────────────────────────────
+function ConfirmModal({ message, onConfirm, onCancel }: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      onClick={onCancel}
+      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "grid", placeItems: "center", zIndex: 9998, backdropFilter: "blur(2px)" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: "min(400px, 92vw)", background: "#fff", borderRadius: 18, border: "1px solid #f1e4e4", padding: "28px 28px 24px", boxShadow: "0 24px 48px rgba(2,6,23,0.22)", display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}
+      >
+        {/* Icon */}
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#FEF2F2", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, flexShrink: 0 }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
+        </div>
+
+        {/* Title */}
+        <h3 style={{ margin: "0 0 8px", fontSize: 18, color: "#0f172a", fontWeight: 700, textAlign: "center", letterSpacing: "-0.01em" }}>Xác nhận xoá</h3>
+
+        {/* Message */}
+        <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: 14, lineHeight: 1.6, textAlign: "center" }}>{message}</p>
+
+        {/* Divider */}
+        <div style={{ width: "100%", height: 1, background: "#F1F5F9", marginBottom: 20 }} />
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, width: "100%" }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{ flex: 1, border: "1px solid #E2E8F0", background: "#F8FAFC", color: "#475467", borderRadius: 10, padding: "11px 0", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+          >
+            Huỷ bỏ
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{ flex: 1, border: "none", background: "linear-gradient(135deg,#EF4444,#DC2626)", color: "#fff", borderRadius: 10, padding: "11px 0", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 12px rgba(239,68,68,0.35)" }}
+          >
+            Xoá
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Card three-dot menu ───────────────────────────────────
 function CardMenu({ onExport, onDelete, exporting, deleting }: {
   onExport: () => Promise<void>;
@@ -173,6 +231,9 @@ function CardMenu({ onExport, onDelete, exporting, deleting }: {
 }) {
   const [open, setOpen] = useState(false);
   const [hovBtn, setHovBtn] = useState(false);
+  const [hovExport, setHovExport] = useState(false);
+  const [hovDelete, setHovDelete] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -217,7 +278,9 @@ function CardMenu({ onExport, onDelete, exporting, deleting }: {
           } satisfies CSSProperties}
         >
           <button
-            style={{ ...itemBase, color: exporting ? "#9CA3AF" : "#1E293B", opacity: exporting ? 0.6 : 1 }}
+            style={{ ...itemBase, color: exporting ? "#9CA3AF" : "#1E293B", opacity: exporting ? 0.6 : 1, background: hovExport && !exporting ? "#F3F4F6" : "transparent", transition: "background 0.12s" }}
+            onMouseEnter={() => setHovExport(true)}
+            onMouseLeave={() => setHovExport(false)}
             onClick={async () => { setOpen(false); await onExport(); }}
             disabled={exporting}
           >
@@ -226,14 +289,23 @@ function CardMenu({ onExport, onDelete, exporting, deleting }: {
           </button>
           <div style={{ height: 1, background: "#F3F4F6" }} />
           <button
-            style={{ ...itemBase, color: deleting ? "#9CA3AF" : "#EF4444", opacity: deleting ? 0.6 : 1 }}
-            onClick={async () => { setOpen(false); await onDelete(); }}
+            style={{ ...itemBase, color: deleting ? "#9CA3AF" : "#EF4444", opacity: deleting ? 0.6 : 1, background: hovDelete && !deleting ? "#FFF1F1" : "transparent", transition: "background 0.12s" }}
+            onMouseEnter={() => setHovDelete(true)}
+            onMouseLeave={() => setHovDelete(false)}
+            onClick={() => { setOpen(false); setConfirmDelete(true); }}
             disabled={deleting}
           >
             <img src="/icons/trash.svg" width={14} height={14} alt="" draggable={false} />
             {deleting ? "Đang xoá..." : "Xoá"}
           </button>
         </div>
+      )}
+      {confirmDelete && (
+        <ConfirmModal
+          message="Bạn có chắc muốn xoá mục này không?"
+          onConfirm={async () => { setConfirmDelete(false); await onDelete(); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   );
@@ -338,6 +410,7 @@ export default function MediaWorkspace() {
   const [page, setPage] = useState(1);
   const [bulkExporting, setBulkExporting] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -422,13 +495,6 @@ export default function MediaWorkspace() {
     cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
   };
 
-  const pgBtn = (active: boolean, disabled = false): CSSProperties => ({
-    width: 32, height: 32, borderRadius: 7, border: `1px solid ${active ? CHECK_COLOR : "#E5E7EB"}`,
-    background: active ? CHECK_COLOR : "#fff", color: active ? "#fff" : "#374151",
-    fontSize: 13, fontWeight: active ? 600 : 400, cursor: disabled ? "not-allowed" : "pointer",
-    display: "inline-flex", alignItems: "center", justifyContent: "center", opacity: disabled ? 0.38 : 1,
-    transition: "all 0.15s", flexShrink: 0,
-  });
 
   return (
     <main style={{ height: "100vh", background: "#f3f4f6", color: "#0f172a", paddingTop: 96, boxSizing: "border-box", overflowX: "hidden", overflowY: "hidden" } satisfies CSSProperties}>
@@ -442,21 +508,7 @@ export default function MediaWorkspace() {
       </header>
 
       {/* Body */}
-      <section style={{ width: "calc(100% - 2 * clamp(12px,3vw,48px))", height: "calc(100vh - 112px)", margin: "8px auto", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 14, boxSizing: "border-box", overflow: "hidden", display: "flex", flexDirection: "column" } satisfies CSSProperties}>
-
-        {/* Top bar: "Gần đây" title + Scan AI */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 24px", flexShrink: 0 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", margin: 0 }}>Gần đây</h2>
-          <Link
-            href="/scanner"
-            style={{ textDecoration: "none", height: 34, borderRadius: 8, background: ACCENT, color: "#fff", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 500, padding: "0 16px", flexShrink: 0 } satisfies CSSProperties}
-          >
-            <img src="/icons/scan-ai.svg" width={20} height={20} alt="" draggable={false} />
-            Scan AI
-          </Link>
-        </div>
-
-        <div style={{ height: 1, background: "#E5E7EB", flexShrink: 0 }} />
+      <section style={{ width: "calc(100% - 2 * clamp(12px,3vw,48px))", height: "calc(100vh - 112px)", margin: "8px auto", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 0, boxSizing: "border-box", overflow: "hidden", display: "flex", flexDirection: "column" } satisfies CSSProperties}>
 
         {/* Secondary bar: Search + Sort + Filter + Select actions */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 24px", flexShrink: 0, gap: 10, flexWrap: "wrap" }}>
@@ -489,7 +541,7 @@ export default function MediaWorkspace() {
                   {bulkExporting ? "Đang tải..." : "Tải xuống"}
                 </HoverBtn>
                 <HoverBtn
-                  onClick={handleBulkDelete}
+                  onClick={() => setShowBulkConfirm(true)}
                   disabled={bulkDeleting}
                   style={{ ...btnOutline, color: bulkDeleting ? "#9CA3AF" : "#EF4444", border: "1px solid #FECACA", opacity: bulkDeleting ? 0.6 : 1 }}
                   hoverStyle={{ background: "#FFF1F1", border: "1px solid #FCA5A5" }}
@@ -507,6 +559,18 @@ export default function MediaWorkspace() {
         </div>
 
         <div style={{ height: 1, background: "#E5E7EB", flexShrink: 0 }} />
+
+        {/* Top bar: "Gần đây" title + Scan AI */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 24px", flexShrink: 0 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", margin: 0 }}>Gần đây</h2>
+          <Link
+            href="/scanner"
+            style={{ textDecoration: "none", height: 34, borderRadius: 8, background: ACCENT, color: "#fff", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 500, padding: "0 16px", flexShrink: 0 } satisfies CSSProperties}
+          >
+            <img src="/icons/scan-ai.svg" width={20} height={20} alt="" draggable={false} />
+            Scan AI
+          </Link>
+        </div>
 
         {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px 16px" }}>
@@ -533,32 +597,57 @@ export default function MediaWorkspace() {
         </div>
 
         {/* Pagination — always visible */}
-        <div style={{ flexShrink: 0, borderTop: "1px solid #E5E7EB", padding: "10px 24px", display: "flex", justifyContent: "center", alignItems: "center", gap: 6, background: "#f8fafc" }}>
-          <button
+        <div style={{ flexShrink: 0, borderTop: "1px solid #E5E7EB", padding: "10px 24px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4, background: "#f8fafc" }}>
+          <HoverBtn
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={safePage === 1}
-            style={{ ...pgBtn(false, safePage === 1), width: "auto", padding: "0 12px" }}
+            aria-label="Trang trước"
+            style={{ padding: 8, borderRadius: 6, border: "none", background: "transparent", cursor: safePage === 1 ? "not-allowed" : "pointer", opacity: safePage === 1 ? 0.5 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+            hoverStyle={{ background: "#F3F4F6" }}
           >
-            ← Trước
-          </button>
+            <img src="/icons/chevron-left.svg" width={20} height={20} alt="" draggable={false} />
+          </HoverBtn>
           {getPaginationPages(safePage, totalPages).map((p, i) =>
             p === "..." ? (
               <span key={`e${i}`} style={{ width: 32, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>…</span>
             ) : (
-              <button key={p} onClick={() => setPage(p as number)} style={pgBtn(p === safePage)}>
+              <HoverBtn
+                key={p}
+                onClick={() => setPage(p as number)}
+                aria-label={`Trang ${p}`}
+                aria-current={p === safePage ? "page" : undefined}
+                style={{
+                  width: 32, height: 32, borderRadius: 6, border: "none",
+                  background: p === safePage ? "#08337B" : "transparent",
+                  color: p === safePage ? "#fff" : "#374151",
+                  fontSize: 13, fontWeight: p === safePage ? 600 : 400,
+                  cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}
+                hoverStyle={p === safePage ? {} : { background: "#F3F4F6" }}
+              >
                 {p}
-              </button>
+              </HoverBtn>
             )
           )}
-          <button
+          <HoverBtn
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={safePage === totalPages}
-            style={{ ...pgBtn(false, safePage === totalPages), width: "auto", padding: "0 12px" }}
+            aria-label="Trang sau"
+            style={{ padding: 8, borderRadius: 6, border: "none", background: "transparent", cursor: safePage === totalPages ? "not-allowed" : "pointer", opacity: safePage === totalPages ? 0.5 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+            hoverStyle={{ background: "#F3F4F6" }}
           >
-            Sau →
-          </button>
+            <img src="/icons/chevron-right.svg" width={20} height={20} alt="" draggable={false} />
+          </HoverBtn>
         </div>
       </section>
+      {showBulkConfirm && (
+        <ConfirmModal
+          message={`Bạn có chắc muốn xoá ${selectedIds.size} mục đã chọn không?`}
+          onConfirm={async () => { setShowBulkConfirm(false); await handleBulkDelete(); }}
+          onCancel={() => setShowBulkConfirm(false)}
+        />
+      )}
     </main>
   );
 }

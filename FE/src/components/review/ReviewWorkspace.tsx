@@ -780,7 +780,10 @@ export default function ReviewWorkspace() {
             <div style={styles.progressTrack}>
               <div style={{ ...styles.progressFill, width: `${totalPercent}%` }} />
             </div>
-            <p style={styles.progressElapsed}>⏱ {totalElapsedText}</p>
+            <p style={{ ...styles.progressElapsed, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+              <img src="/icons/clock.svg" width={13} height={13} alt="" draggable={false} />
+              {totalElapsedText}
+            </p>
 
             {/* Divider */}
             <div style={styles.progressDivider} />
@@ -802,14 +805,14 @@ export default function ReviewWorkspace() {
             <p style={styles.progressCurrentLabel}>Đang xử lý</p>
             <p style={styles.progressCurrentName}>{progress.currentFileName}</p>
             <div style={{ ...styles.progressTrack, height: "6px", marginBottom: "6px" }}>
-              {progress.currentFilePercent > 0 ? (
+              {progress.currentFilePercent >= 1 ? (
                 <div style={{ ...styles.progressFill, width: `${progress.currentFilePercent}%` }} />
               ) : (
                 <div className="progress-indeterminate" />
               )}
             </div>
             <p style={{ ...styles.progressLabel, fontSize: "12px", color: "#94a3b8" }}>
-              {progress.currentFilePercent > 0 ? `${progress.currentFilePercent.toFixed(0)}%` : "Đang xử lý..."} · {currentFileElapsedText}
+              {progress.currentFilePercent >= 1 ? `${progress.currentFilePercent.toFixed(0)}%` : "Đang xử lý..."}
             </p>
           </section>
         </div>
