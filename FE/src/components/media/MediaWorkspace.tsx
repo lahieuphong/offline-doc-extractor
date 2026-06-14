@@ -70,7 +70,7 @@ function Checkbox({ checked, onChange }: { checked: boolean; onChange: (e: React
 // ── Info Popover ──────────────────────────────────────────
 function InfoButton({ job }: { job: JobEntry }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ bottom: 0, left: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number }>({ right: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
@@ -90,10 +90,14 @@ function InfoButton({ job }: { job: JobEntry }) {
     e.stopPropagation();
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setPos({
-        bottom: window.innerHeight - rect.top + 8,
-        left: Math.max(8, rect.right - 270),
-      });
+      const right = window.innerWidth - rect.right;
+      const estimatedHeight = 280;
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      if (spaceBelow >= estimatedHeight) {
+        setPos({ top: rect.bottom + 8, bottom: undefined, right });
+      } else {
+        setPos({ top: undefined, bottom: window.innerHeight - rect.top + 8, right });
+      }
     }
     setOpen((v) => !v);
   };
@@ -113,23 +117,26 @@ function InfoButton({ job }: { job: JobEntry }) {
           ref={popRef}
           onClick={(e) => e.stopPropagation()}
           style={{
-            position: "fixed", bottom: pos.bottom, left: pos.left, zIndex: 9999,
+            position: "fixed",
+            ...(pos.top !== undefined ? { top: pos.top } : {}),
+            ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
+            right: pos.right, zIndex: 9999,
             background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10,
             boxShadow: "0 8px 24px rgba(0,0,0,0.13)", padding: "12px 14px",
-            minWidth: 210, maxWidth: 270,
+            width: "max-content", minWidth: 150, maxWidth: 230,
           } satisfies CSSProperties}
         >
-          <p style={{ fontSize: 11, fontWeight: 600, color: "#9CA3AF", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.07em" }}>Chi tiết</p>
-          <p style={{ fontSize: 12, color: "#374151", marginBottom: 3 }}><span style={{ color: "#9CA3AF" }}>Số file: </span>{job.total_files}</p>
+          <p style={{ fontSize: 11, fontWeight: 600, color: "#9CA3AF", margin: "0 0 6px 0", textTransform: "uppercase", letterSpacing: "0.07em" }}>Chi tiết</p>
+          <p style={{ fontSize: 12, color: "#374151", margin: "0 0 3px 0" }}><span style={{ color: "#9CA3AF" }}>Số file: </span>{job.total_files}</p>
           {job.duration_sec > 0 && (
-            <p style={{ fontSize: 12, color: "#374151", marginBottom: 3 }}><span style={{ color: "#9CA3AF" }}>Thời gian: </span>{formatDuration(job.duration_sec)}</p>
+            <p style={{ fontSize: 12, color: "#374151", margin: "0 0 3px 0" }}><span style={{ color: "#9CA3AF" }}>Thời gian: </span>{formatDuration(job.duration_sec)}</p>
           )}
           {job.source_filenames.length > 0 && (
             <div style={{ marginTop: 8, borderTop: "1px solid #F3F4F6", paddingTop: 8 }}>
-              <p style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 4 }}>Danh sách file:</p>
+              <p style={{ fontSize: 11, fontWeight: 600, color: "#9CA3AF", margin: "0 0 4px 0", textTransform: "uppercase", letterSpacing: "0.07em" }}>Danh sách file:</p>
               <div style={{ maxHeight: 160, overflowY: "auto" }}>
                 {job.source_filenames.map((name, i) => (
-                  <p key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 1.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</p>
+                  <p key={i} style={{ fontSize: 11, color: "#374151", lineHeight: 2, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</p>
                 ))}
               </div>
             </div>
@@ -141,6 +148,22 @@ function InfoButton({ job }: { job: JobEntry }) {
   );
 }
 
+// ── Hover-aware button ────────────────────────────────────
+function HoverBtn({ style, hoverStyle, disabled, children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { hoverStyle?: CSSProperties }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      {...rest}
+      disabled={disabled}
+      onMouseEnter={() => !disabled && setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ ...style, ...(hov && !disabled ? hoverStyle : {}), transition: "all 0.15s" }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ── Card three-dot menu ───────────────────────────────────
 function CardMenu({ onExport, onDelete, exporting, deleting }: {
   onExport: () => Promise<void>;
@@ -149,6 +172,7 @@ function CardMenu({ onExport, onDelete, exporting, deleting }: {
   deleting: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [hovBtn, setHovBtn] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -169,12 +193,16 @@ function CardMenu({ onExport, onDelete, exporting, deleting }: {
     <div ref={ref} style={{ position: "relative" }}>
       <a
         href="#"
+        onMouseEnter={() => setHovBtn(true)}
+        onMouseLeave={() => setHovBtn(false)}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
         style={{
-          width: 17, height: 17, borderRadius: "50%", border: "1px solid #D9D9D9",
-          background: "#fff", boxShadow: "0 4px 30px rgba(0,0,0,0.05)",
+          width: 17, height: 17, borderRadius: "50%",
+          border: `1px solid ${hovBtn ? "#9CA3AF" : "#D9D9D9"}`,
+          background: hovBtn ? "#F3F4F6" : "#fff",
+          boxShadow: "0 4px 30px rgba(0,0,0,0.05)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          textDecoration: "none", flexShrink: 0,
+          textDecoration: "none", flexShrink: 0, transition: "all 0.15s",
         } satisfies CSSProperties}
       >
         <img src="/icons/ellipsis.svg" width={10} height={10} alt="menu" draggable={false} />
@@ -450,28 +478,30 @@ export default function MediaWorkspace() {
             {hasSelection ? (
               <>
                 <span style={{ fontSize: 13, color: "#6B7280", whiteSpace: "nowrap" }}>Đã chọn: <strong>{selectedIds.size}</strong></span>
-                <button onClick={deselectAll} style={btnOutline}>Bỏ chọn</button>
-                <button
+                <HoverBtn onClick={deselectAll} style={btnOutline} hoverStyle={{ background: "#F3F4F6", border: "1px solid #9CA3AF" }}>Bỏ chọn</HoverBtn>
+                <HoverBtn
                   onClick={handleBulkExport}
                   disabled={bulkExporting}
                   style={{ ...btnOutline, color: bulkExporting ? "#9CA3AF" : ACCENT, border: `1px solid ${ACCENT}`, opacity: bulkExporting ? 0.6 : 1 }}
+                  hoverStyle={{ background: ACCENT_BG }}
                 >
                   <img src="/icons/download.svg" width={13} height={13} alt="" draggable={false} />
                   {bulkExporting ? "Đang tải..." : "Tải xuống"}
-                </button>
-                <button
+                </HoverBtn>
+                <HoverBtn
                   onClick={handleBulkDelete}
                   disabled={bulkDeleting}
                   style={{ ...btnOutline, color: bulkDeleting ? "#9CA3AF" : "#EF4444", border: "1px solid #FECACA", opacity: bulkDeleting ? 0.6 : 1 }}
+                  hoverStyle={{ background: "#FFF1F1", border: "1px solid #FCA5A5" }}
                 >
                   <img src="/icons/trash.svg" width={13} height={13} alt="" draggable={false} />
                   {bulkDeleting ? "Đang xoá..." : "Xoá"}
-                </button>
+                </HoverBtn>
               </>
             ) : (
-              <button onClick={selectAllPage} disabled={paged.length === 0} style={{ ...btnOutline, opacity: paged.length === 0 ? 0.4 : 1 }}>
+              <HoverBtn onClick={selectAllPage} disabled={paged.length === 0} style={{ ...btnOutline, opacity: paged.length === 0 ? 0.4 : 1 }} hoverStyle={{ background: "#F3F4F6", border: "1px solid #9CA3AF" }}>
                 Chọn tất cả
-              </button>
+              </HoverBtn>
             )}
           </div>
         </div>
