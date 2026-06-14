@@ -41,6 +41,7 @@ ENABLE_LLM_BACKFILL_ON_MISSING = (
 )
 LLM_BACKFILL_MIN_MISSING = max(1, int(os.getenv("LLM_BACKFILL_MIN_MISSING", "3")))
 JOBS_EXPORT_DIR = EXPORTS_DIR / "jobs"
+EXCEL_EXPORT_DIR = EXPORTS_DIR / "excel"
 
 
 def _cleanup_batch(batch_id: str, *extra_paths: Path) -> None:
@@ -114,6 +115,7 @@ def startup_event():
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
     JOBS_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    EXCEL_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/api/health")
@@ -652,7 +654,7 @@ async def extract_excel(
         pdf_read_mode=pdf_read_mode,
     )
 
-    output_path = EXPORTS_DIR / f"extraction_result_{batch_id}.xlsx"
+    output_path = EXCEL_EXPORT_DIR / f"extraction_result_{batch_id}.xlsx"
 
     export_results_to_excel(
         results=results,
@@ -717,7 +719,7 @@ async def export_excel_from_json(
     batch_id = payload.get("batch_id") or str(uuid.uuid4())
     job_id = payload.get("job_id", "")
     job_result_path = JOBS_EXPORT_DIR / f"{job_id}.json" if job_id else None
-    output_path = EXPORTS_DIR / f"extraction_result_{batch_id}.xlsx"
+    output_path = EXCEL_EXPORT_DIR / f"extraction_result_{batch_id}.xlsx"
 
     export_results_to_excel(
         results=results,
@@ -800,10 +802,12 @@ async def delete_job(job_id: str):
     except Exception:
         batch_id = None
     result_path.unlink(missing_ok=True)
+    (EXCEL_EXPORT_DIR / f"extraction_result_{job_id}.xlsx").unlink(missing_ok=True)
     if batch_id:
         upload_dir = UPLOADS_DIR / batch_id
         if upload_dir.exists():
             shutil.rmtree(upload_dir, ignore_errors=True)
+        (EXCEL_EXPORT_DIR / f"extraction_result_{batch_id}.xlsx").unlink(missing_ok=True)
     return {"deleted": job_id}
 
 
@@ -853,7 +857,7 @@ async def get_job_result_excel(job_id: str):
         raise HTTPException(status_code=400, detail="No extraction results in job output.")
 
     batch_id = str(payload.get("batch_id", ""))
-    output_path = EXPORTS_DIR / f"extraction_result_{job_id}.xlsx"
+    output_path = EXCEL_EXPORT_DIR / f"extraction_result_{job_id}.xlsx"
     export_results_to_excel(results=results, output_path=output_path)
 
     return FileResponse(
