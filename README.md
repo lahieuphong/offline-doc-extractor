@@ -50,5 +50,7 @@ storage/     uploads/ và exports/ (runtime, cần backup định kỳ)
 
 ## Tài liệu
 
-- [22 trường metadata — quy tắc bóc tách & cấu hình](PATCH_HUONG_DAN_22_METADATA_FINAL.md)
-- [Hướng dẫn chạy lệnh — master & target](HUONG_DAN_CHAY_LENH.md)
+- [22 trường metadata — quy tắc bóc tách & cấu hình](docs/PATCH_HUONG_DAN_22_METADATA_FINAL.md)
+- [Hướng dẫn chạy Docker — master & target](docs/HUONG_DAN_DOCKER.md)
+- [Hướng dẫn chạy dev local — BE & FE](docs/HUONG_DAN_DEV_LOCAL.md)
+- [Hướng dẫn đóng gói Docker](docs/HUONG_DAN_DON_DOCKER.md)

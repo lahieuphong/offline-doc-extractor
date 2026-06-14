@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
 import { BACKEND_URL } from "@/lib/api";
 
@@ -69,29 +70,50 @@ function Checkbox({ checked, onChange }: { checked: boolean; onChange: (e: React
 // ── Info Popover ──────────────────────────────────────────
 function InfoButton({ job }: { job: JobEntry }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ bottom: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        popRef.current && !popRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({
+        bottom: window.innerHeight - rect.top + 8,
+        left: Math.max(8, rect.right - 270),
+      });
+    }
+    setOpen((v) => !v);
+  };
+
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        ref={btnRef}
+        onClick={handleClick}
         style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 0 }}
         title="Chi tiết"
       >
         <img src="/icons/info.svg" width={17} height={17} alt="info" draggable={false} />
       </button>
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
+          ref={popRef}
           onClick={(e) => e.stopPropagation()}
           style={{
-            position: "absolute", bottom: "calc(100% + 8px)", right: 0, zIndex: 400,
+            position: "fixed", bottom: pos.bottom, left: pos.left, zIndex: 9999,
             background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10,
             boxShadow: "0 8px 24px rgba(0,0,0,0.13)", padding: "12px 14px",
             minWidth: 210, maxWidth: 270,
@@ -112,9 +134,10 @@ function InfoButton({ job }: { job: JobEntry }) {
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
@@ -148,13 +171,13 @@ function CardMenu({ onExport, onDelete, exporting, deleting }: {
         href="#"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
         style={{
-          width: 26, height: 26, borderRadius: "50%", border: "1px solid #D9D9D9",
+          width: 17, height: 17, borderRadius: "50%", border: "1px solid #D9D9D9",
           background: "#fff", boxShadow: "0 4px 30px rgba(0,0,0,0.05)",
           display: "flex", alignItems: "center", justifyContent: "center",
           textDecoration: "none", flexShrink: 0,
         } satisfies CSSProperties}
       >
-        <img src="/icons/ellipsis.svg" width={15} height={15} alt="menu" draggable={false} />
+        <img src="/icons/ellipsis.svg" width={10} height={10} alt="menu" draggable={false} />
       </a>
       {open && (
         <div
@@ -409,7 +432,7 @@ export default function MediaWorkspace() {
 
         {/* Secondary bar: Search + Sort + Filter + Select actions */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 24px", flexShrink: 0, gap: 10, flexWrap: "wrap" }}>
-          {/* Left: search + sort + filter */}
+          {/* Left: search */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <label style={{ height: 32, minWidth: 220, flex: "1 1 220px", maxWidth: 340, borderRadius: 7, border: "1px solid #D9D9D9", background: "#fff", display: "flex", alignItems: "center", padding: "0 10px", gap: 7 } satisfies CSSProperties}>
               <img src="/icons/search.svg" width={15} height={15} alt="" draggable={false} />
@@ -420,20 +443,6 @@ export default function MediaWorkspace() {
                 style={{ border: 0, outline: "none", width: "100%", fontSize: 13, color: "#1f2937", background: "transparent" }}
               />
             </label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              style={{ height: 32, border: "1px solid #D9D9D9", borderRadius: 7, background: "#fff", padding: "0 8px", fontSize: 13, color: "#374151", outline: "none", cursor: "pointer", minWidth: 138 }}
-            >
-              <option value="newest">Mới nhất</option>
-              <option value="oldest">Cũ nhất</option>
-              <option value="most_files">Nhiều file nhất</option>
-              <option value="least_files">Ít file nhất</option>
-            </select>
-            <button style={btnOutline}>
-              <img src="/icons/filter.svg" width={14} height={14} alt="" draggable={false} />
-              Bộ lọc
-            </button>
           </div>
 
           {/* Right: selection actions */}
