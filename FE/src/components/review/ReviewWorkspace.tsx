@@ -374,9 +374,21 @@ export default function ReviewWorkspace() {
 
   const totalPercent = useMemo(() => {
     if (!progress.totalFiles) return 0;
-    const ratio = (progress.completedFiles + progress.currentFilePercent / 100) / progress.totalFiles;
-    return Math.min(100, Math.max(0, ratio * 100));
-  }, [progress]);
+    if (progress.completedFiles >= progress.totalFiles) return 100;
+    const completedRatio = progress.completedFiles / progress.totalFiles;
+    // Có progress thật từ backend → dùng ngay
+    if (progress.currentFilePercent > 0) {
+      return Math.min(100, (completedRatio + progress.currentFilePercent / 100 / progress.totalFiles) * 100);
+    }
+    // Chưa có progress → ước tính dựa theo thời gian đã trôi qua
+    const startedAt = extractionStartedAtRef.current;
+    if (!startedAt || !progress.visible) return completedRatio * 100;
+    const elapsedSec = (Date.now() - startedAt) / 1000;
+    const avgSecPerFile = progress.completedFiles > 0 ? elapsedSec / progress.completedFiles : 90;
+    const timeInCurrentFile = elapsedSec - avgSecPerFile * progress.completedFiles;
+    const pseudoFraction = Math.min(0.85, timeInCurrentFile / avgSecPerFile);
+    return Math.min(100, (completedRatio + pseudoFraction / progress.totalFiles) * 100);
+  }, [progress, timeTick]);
 
   const currentFileElapsedText = useMemo(() => {
     const startedAt = currentFileStartedAtRef.current;
