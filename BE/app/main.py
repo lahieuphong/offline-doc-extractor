@@ -4,6 +4,7 @@ import os
 import time
 import re
 import json
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -42,6 +43,68 @@ ENABLE_LLM_BACKFILL_ON_MISSING = (
 LLM_BACKFILL_MIN_MISSING = max(1, int(os.getenv("LLM_BACKFILL_MIN_MISSING", "3")))
 JOBS_EXPORT_DIR = EXPORTS_DIR / "jobs"
 EXCEL_EXPORT_DIR = EXPORTS_DIR / "excel"
+
+
+# In-process job store for synchronous fallback (local dev without Redis/worker).
+_local_job_store: Dict[str, Dict[str, Any]] = {}
+
+
+def _run_sync_batch(job_id: str, payload: Dict[str, Any]) -> None:
+    """Process batch synchronously in a background thread when Redis is unavailable."""
+    batch_id = str(payload["batch_id"])
+    use_llm = bool(payload.get("use_llm", False))
+    pdf_read_mode = str(payload.get("pdf_read_mode", "first_page"))
+    file_entries: List[Dict[str, Any]] = payload.get("file_entries", [])
+    total_files = len(file_entries)
+    started_at = time.time()
+
+    _local_job_store[job_id] = {
+        "status": "processing",
+        "batch_id": batch_id,
+        "total_files": total_files,
+        "processed_files": 0,
+        "failed_files": 0,
+        "progress_percent": 0.0,
+    }
+
+    results: List[Dict[str, Any]] = []
+    failed_files = 0
+    for idx, entry in enumerate(file_entries, start=1):
+        result = process_stored_file_with_retry(
+            stored_path=Path(entry["stored_path"]),
+            original_filename=str(entry["original_filename"]),
+            batch_id=batch_id,
+            use_llm=use_llm,
+            pdf_read_mode=pdf_read_mode,
+        )
+        if result.get("mode") == "failed":
+            failed_files += 1
+        results.append(result)
+        _local_job_store[job_id].update({
+            "processed_files": idx,
+            "failed_files": failed_files,
+            "progress_percent": round((idx / total_files) * 100, 2) if total_files else 100.0,
+        })
+
+    finished_at = time.time()
+    output_payload = {
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "status": "completed",
+        "total_files": total_files,
+        "processed_files": total_files,
+        "failed_files": failed_files,
+        "succeeded_files": total_files - failed_files,
+        "duration_sec": round(finished_at - started_at, 2),
+        "results": results,
+    }
+    result_path = JOBS_EXPORT_DIR / f"{job_id}.json"
+    result_path.write_text(json.dumps(output_payload, ensure_ascii=False), encoding="utf-8")
+    _local_job_store[job_id].update({
+        "status": "finished",
+        "processed_files": total_files,
+        "progress_percent": 100.0,
+    })
 
 
 def _cleanup_batch(batch_id: str, *extra_paths: Path) -> None:
@@ -761,14 +824,31 @@ async def submit_extract_job(
         "pdf_read_mode": pdf_read_mode,
         "file_entries": file_entries,
     }
-    job = enqueue_batch_job(payload)
 
-    return {
-        "job_id": job.id,
-        "batch_id": batch_id,
-        "status": "queued",
-        "total_files": len(file_entries),
-    }
+    try:
+        from rq import Worker
+        _redis_conn = get_redis_conn()
+        active_workers = Worker.all(connection=_redis_conn)
+        if not active_workers:
+            raise RuntimeError("No rq workers available")
+        job = enqueue_batch_job(payload)
+        return {
+            "job_id": job.id,
+            "batch_id": batch_id,
+            "status": "queued",
+            "total_files": len(file_entries),
+        }
+    except Exception:
+        # No worker running (local dev): process in background thread.
+        job_id = str(uuid.uuid4())
+        thread = threading.Thread(target=_run_sync_batch, args=(job_id, payload), daemon=True)
+        thread.start()
+        return {
+            "job_id": job_id,
+            "batch_id": batch_id,
+            "status": "queued",
+            "total_files": len(file_entries),
+        }
 
 
 @app.get("/api/jobs")
@@ -813,6 +893,20 @@ async def delete_job(job_id: str):
 
 @app.get("/api/jobs/{job_id}")
 async def get_job_status(job_id: str):
+    # Check in-process store first (synchronous fallback for local dev without Redis).
+    if job_id in _local_job_store:
+        meta = _local_job_store[job_id]
+        return {
+            "job_id": job_id,
+            "status": meta.get("status"),
+            "batch_id": meta.get("batch_id"),
+            "total_files": meta.get("total_files", 0),
+            "processed_files": meta.get("processed_files", 0),
+            "failed_files": meta.get("failed_files", 0),
+            "progress_percent": meta.get("progress_percent", 0.0),
+            "error": None,
+        }
+
     from rq.job import Job
     from rq.exceptions import NoSuchJobError
 

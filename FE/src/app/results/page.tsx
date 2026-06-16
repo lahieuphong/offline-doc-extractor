@@ -576,7 +576,7 @@ const styles = {
     display: "grid",
     gridTemplateRows: "auto 1fr",
     gap: "0",
-    padding: "0 16px 84px",
+    padding: "0 16px 72px",
     overflow: "hidden",
     boxSizing: "border-box" as const,
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif',
@@ -1024,17 +1024,60 @@ export default function ResultsPage() {
 
   return (
     <div style={styles.page}>
+      <style jsx global>{`
+        /* Custom scrollbar */
+        .results-main-panel::-webkit-scrollbar,
+        .results-outline-list::-webkit-scrollbar {
+          width: 5px;
+        }
+        .results-main-panel::-webkit-scrollbar-track,
+        .results-outline-list::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .results-main-panel::-webkit-scrollbar-thumb,
+        .results-outline-list::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 99px;
+        }
+        .results-main-panel::-webkit-scrollbar-thumb:hover,
+        .results-outline-list::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        /* Hover on sidebar file items */
+        .results-outline-btn:hover {
+          background: #f1f5f9 !important;
+        }
+        .results-outline-btn[data-active="true"]:hover {
+          background: #dbeafe !important;
+        }
+        /* Hover on table rows */
+        .results-table tbody tr:hover td {
+          background: #f8fafc;
+        }
+        /* Hover on sidebar toggle button */
+        .results-sidebar-toggle:hover {
+          background: #f1f5f9 !important;
+        }
+        /* Hover on back button */
+        .results-back-btn:hover {
+          color: #08337B !important;
+        }
+        .results-back-btn:hover svg {
+          stroke: #08337B;
+        }
+      `}</style>
       <header style={{ margin: "0 -16px", padding: "12px 16px", background: "#fff", borderBottom: "1px solid #DDE2EB", boxShadow: "0 1px 2px rgba(15,23,42,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button
           type="button"
           onClick={() => router.push("/media")}
-          style={{ border: 0, background: "transparent", color: "#4B5563", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, fontWeight: 600, lineHeight: 1, padding: 0 }}
+          className="results-back-btn"
+          style={{ border: 0, background: "transparent", color: "#4B5563", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, fontWeight: 600, lineHeight: 1, padding: 0, transition: "color 0.15s ease" }}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ width: 20, height: 20 }}>
             <path d="m12 19-7-7 7-7" />
             <path d="M19 12H5" />
           </svg>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Quay lại</span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Quay lại trang chủ</span>
         </button>
         <h1 style={{ margin: 0, textAlign: "center", fontSize: 16, fontWeight: 600, color: "#374151" }}>Kết quả bóc tách (22 trường metadata)</h1>
         <div style={{ width: 44 }} />
@@ -1042,59 +1085,60 @@ export default function ResultsPage() {
 
       <div style={styles.outlineWrapper}>
         {/* Sidebar outline */}
-        <aside style={{ ...styles.outlinePanel, width: sidebarOpen ? 220 : 48, transition: "width 0.2s ease" }}>
-          {/* Header */}
-          <div style={{ ...styles.outlineHeader, justifyContent: sidebarOpen ? "space-between" : "center", padding: sidebarOpen ? "10px 12px 8px" : "10px 0 8px" }}>
-            {sidebarOpen && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.07em", textTransform: "uppercase" as const }}>Danh sách tệp</span>
-            )}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {sidebarOpen && (
-                <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 600, background: "#f1f5f9", borderRadius: 4, padding: "1px 5px" }}>{results.length}</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setSidebarOpen((v) => !v)}
-                aria-label={sidebarOpen ? "Thu gọn" : "Mở danh sách"}
-                style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", borderRadius: 4 }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14, transform: sidebarOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }}>
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          {/* List */}
-          <div style={styles.outlineList}>
-            {results.map((item, idx) => {
-              const filename = formatCellValue(item.source_filename) || `File ${idx + 1}`;
-              const shortName = filename.replace(/\.[^/.]+$/, "");
-              const isActive = idx >= pageStartIndex && idx < pageStartIndex + RESULT_PAGE_SIZE;
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    const targetPage = Math.ceil((idx + 1) / RESULT_PAGE_SIZE);
-                    setResultPage(targetPage);
-                    setJumpToIndex(idx);
-                  }}
-                  style={{ ...styles.outlineItem, justifyContent: sidebarOpen ? "flex-start" : "center", padding: sidebarOpen ? "7px 12px" : "7px 0", ...(isActive ? styles.outlineItemActive : {}) }}
-                  title={shortName}
-                >
-                  <span style={{ ...styles.outlineBadge, ...(isActive ? {} : styles.outlineBadgeInactive), flexShrink: 0 }}>{idx + 1}</span>
-                  {sidebarOpen && (
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, fontSize: 12, color: isActive ? "#08337B" : "#475467", fontWeight: isActive ? 600 : 400 }}>{shortName}</span>
-                  )}
+        <aside style={{ ...styles.outlinePanel, width: sidebarOpen ? 220 : 48, transition: "width 0.25s ease" }}>
+          {sidebarOpen ? (
+            /* ── MỞ: header trên, list dưới ── */
+            <>
+              <div style={{ ...styles.outlineHeader }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.07em", textTransform: "uppercase" as const }}>Danh sách tệp</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: "#cbd5e1", fontWeight: 600, background: "#f1f5f9", borderRadius: 4, padding: "1px 5px" }}>{results.length}</span>
+                  <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Thu gọn" className="results-sidebar-toggle" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", borderRadius: 4, transition: "background 0.15s ease" }}>
+                    <img src="/icons/chevron-left.svg" width={20} height={20} alt="" draggable={false} />
+                  </button>
+                </div>
+              </div>
+              <div style={styles.outlineList} className="results-outline-list">
+                {results.map((item, idx) => {
+                  const filename = formatCellValue(item.source_filename) || `File ${idx + 1}`;
+                  const shortName = filename.replace(/\.[^/.]+$/, "");
+                  const isActive = idx >= pageStartIndex && idx < pageStartIndex + RESULT_PAGE_SIZE;
+                  return (
+                    <button key={idx} type="button" onClick={() => { const p = Math.ceil((idx + 1) / RESULT_PAGE_SIZE); setResultPage(p); setJumpToIndex(idx); }} className="results-outline-btn" data-active={isActive ? "true" : undefined} style={{ ...styles.outlineItem, ...(isActive ? styles.outlineItemActive : {}) }} title={shortName}>
+                      <span style={{ ...styles.outlineBadge, ...(isActive ? {} : styles.outlineBadgeInactive), flexShrink: 0 }}>{idx + 1}</span>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, fontSize: 12, color: isActive ? "#08337B" : "#475467", fontWeight: isActive ? 600 : 400 }}>{shortName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* ── THU GỌN: toggle trên | badges dưới ── */
+            <div style={{ display: "flex", flexDirection: "column" as const, flex: 1, overflow: "hidden" }}>
+              {/* Hàng trên: toggle */}
+              <div style={{ height: 48, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid #f1f5f9" }}>
+                <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở danh sách" className="results-sidebar-toggle" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 2, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", borderRadius: 4, transition: "background 0.15s ease" }}>
+                  <img src="/icons/chevron-right.svg" width={20} height={20} alt="" draggable={false} />
                 </button>
-              );
-            })}
-          </div>
+              </div>
+              {/* Hàng dưới: badges */}
+              <div style={{ flex: 1, overflowY: "auto" as const, padding: "4px 0" }} className="results-outline-list">
+                {results.map((item, idx) => {
+                  const isActive = idx >= pageStartIndex && idx < pageStartIndex + RESULT_PAGE_SIZE;
+                  return (
+                    <button key={idx} type="button" onClick={() => { const p = Math.ceil((idx + 1) / RESULT_PAGE_SIZE); setResultPage(p); setJumpToIndex(idx); }} className="results-outline-btn" data-active={isActive ? "true" : undefined} style={{ ...styles.outlineItem, justifyContent: "center", padding: "7px 0", ...(isActive ? styles.outlineItemActive : {}) }}>
+                      <span style={{ ...styles.outlineBadge, ...(isActive ? {} : styles.outlineBadgeInactive) }}>{idx + 1}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Main panel + pagination */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
-        <section style={styles.mainPanel}>
+        <section style={styles.mainPanel} className="results-main-panel">
         {!hasLoadedPayload ? (
           <div style={styles.noData}>Đang tải dữ liệu kết quả...</div>
         ) : results.length === 0 ? (
@@ -1118,7 +1162,7 @@ export default function ResultsPage() {
                 <span>Kết quả bóc tách File {index + 1}</span>
                 <span style={styles.fileTitlePath}>/ {formatCellValue(item.source_filename)}</span>
               </p>
-              <table style={styles.table}>
+              <table style={styles.table} className="results-table">
                 <colgroup>
                   <col style={styles.colMeta} />
                   <col style={styles.colValue} />

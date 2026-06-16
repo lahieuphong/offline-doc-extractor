@@ -561,7 +561,7 @@ export default function MediaWorkspace() {
         <div style={{ height: 1, background: "#E5E7EB", flexShrink: 0 }} />
 
         {/* Top bar: "Gần đây" title + Scan AI */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 24px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 24px", flexShrink: 0, borderBottom: "1px solid #e5e7eb" }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", margin: 0 }}>Gần đây</h2>
           <Link
             href="/scanner"
