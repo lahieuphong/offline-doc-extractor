@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import SharedBottomBar from "@/components/common/SharedBottomBar";
 import {
   buildScannerTransferIdbMarker,
   saveScannerFilesBatchToIdb,
@@ -114,21 +113,17 @@ const styles = {
     fontWeight: 700,
   },
   startupOverlay: {
-    position: "absolute" as const,
+    position: "fixed" as const,
     inset: 0,
     zIndex: 16,
     display: "grid",
     placeItems: "center",
+    paddingTop: `${HEADER_HEIGHT}px`,
+    paddingBottom: "72px",
     background: "linear-gradient(160deg, rgba(2, 6, 23, 0.78), rgba(15, 23, 42, 0.72))",
     backdropFilter: "blur(4px)",
   },
   startupCard: {
-    minWidth: "220px",
-    borderRadius: "16px",
-    border: "1px solid rgba(148, 163, 184, 0.35)",
-    background: "rgba(15, 23, 42, 0.66)",
-    padding: "18px 20px",
-    boxShadow: "0 14px 34px rgba(2, 6, 23, 0.45)",
     display: "grid",
     gap: "10px",
     justifyItems: "center",
@@ -168,7 +163,7 @@ const styles = {
     background: "rgba(255, 255, 255, 0.15)",
     border: "1px solid rgba(255, 255, 255, 0.25)",
     padding: "4px",
-    width: "min(92vw, 520px)",
+    width: "min(62vw, 320px)",
   },
   scanFrame: {
     position: "absolute" as const,
@@ -570,73 +565,80 @@ export default function ScannerWorkspace() {
         <div style={{ width: 44 }} />
       </header>
 
-      <SharedBottomBar
-        leftLabel="Quay lại"
-        leftIcon={<span aria-hidden="true">←</span>}
-        onLeftClick={() => router.push("/media")}
-        rightLabel="Bắt đầu quét"
-        rightIcon={<span aria-hidden="true">→</span>}
-        rightDisabled={totalReadyItems <= 0}
-        onRightClick={enterReviewDoc}
-        fixedBottom
-        centerContent={null}
-        showLeft={false}
-        rightCompanion={
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "26px", marginRight: "12px" }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
-              style={styles.hiddenInput}
-              onChange={async (event) => {
-                const input = event.currentTarget;
-                const files = input.files;
-                await handlePickFiles(files);
-                input.value = "";
-              }}
-            />
-            <button
-              type="button"
-              style={styles.pickerBtn}
-              onClick={() => fileInputRef.current?.click()}
-              onMouseEnter={(event) => {
-                event.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
-              }}
-              onMouseLeave={(event) => {
-                event.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-              }}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.pickerIcon} aria-hidden="true">
-                <path d="M18 22H4a2 2 0 0 1-2-2V6" />
-                <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18" />
-                <circle cx="12" cy="8" r="2" />
-                <rect width="16" height="16" x="6" y="2" rx="2" />
-              </svg>
-            </button>
-            <button type="button" aria-label="Nút chụp" style={styles.captureBtn} onClick={captureImage}>
-              <span style={styles.captureOuter}>
-                <span style={styles.captureInner} />
-              </span>
-            </button>
-          </div>
-        }
-        rightCustomButton={
+      <footer style={{
+        height: "72px",
+        background: "#08337B",
+        borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 40,
+      }}>
+        <div style={{
+          width: "min(62vw, 320px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+            style={styles.hiddenInput}
+            onChange={async (event) => {
+              const input = event.currentTarget;
+              const files = input.files;
+              await handlePickFiles(files);
+              input.value = "";
+            }}
+          />
           <button
             type="button"
-            disabled={totalReadyItems <= 0}
-            style={{ ...styles.scannerNextBtn, ...(totalReadyItems > 0 ? styles.scannerNextBtnActive : null) }}
-            title="Tiếp tục"
-            onClick={enterReviewDoc}
+            style={styles.pickerBtn}
+            onClick={() => fileInputRef.current?.click()}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+            }}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.scannerNextIcon} aria-hidden="true">
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.pickerIcon} aria-hidden="true">
+              <path d="M18 22H4a2 2 0 0 1-2-2V6" />
+              <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18" />
+              <circle cx="12" cy="8" r="2" />
+              <rect width="16" height="16" x="6" y="2" rx="2" />
             </svg>
-            {totalReadyItems > 0 ? <span style={styles.scannerNextBtnBadge}>{totalReadyItems}</span> : null}
           </button>
-        }
-      />
+        </div>
+
+        <button type="button" aria-label="Nút chụp" style={styles.captureBtn} onClick={captureImage}>
+          <span style={styles.captureOuter}>
+            <span style={styles.captureInner} />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          disabled={totalReadyItems <= 0}
+          style={{ ...styles.scannerNextBtn, ...(totalReadyItems > 0 ? styles.scannerNextBtnActive : null) }}
+          title="Tiếp tục"
+          onClick={enterReviewDoc}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.scannerNextIcon} aria-hidden="true">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+          {totalReadyItems > 0 ? <span style={styles.scannerNextBtnBadge}>{totalReadyItems}</span> : null}
+        </button>
+        </div>
+      </footer>
     </div>
   );
 }
